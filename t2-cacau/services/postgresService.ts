@@ -13,7 +13,14 @@ export const PostgresService = {
         throw new Error(`Erro na requisição n8n: ${response.status}`);
       }
       
-      const data: FrotaView[] = await response.json();
+      const data = await response.json();
+      console.log('Dados recebidos do n8n:', data);
+      
+      if (!Array.isArray(data)) {
+        console.error('Resposta do n8n não é um array:', data);
+        return [];
+      }
+
       return data;
     } catch (error) {
       console.error('Falha ao buscar frota do n8n:', error);

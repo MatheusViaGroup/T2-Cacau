@@ -158,8 +158,8 @@ export const AdminPage = () => {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none"
                              >
                                 <option value="">Selecione...</option>
-                                {frotaList.map(f => (
-                                    <option key={f.COD_PESSOA} value={f.MOTORISTA}>{f.MOTORISTA}</option>
+                                {frotaList.map((f, index) => (
+                                    <option key={f.COD_PESSOA || index} value={f.MOTORISTA}>{f.MOTORISTA}</option>
                                 ))}
                              </select>
                         </label>
