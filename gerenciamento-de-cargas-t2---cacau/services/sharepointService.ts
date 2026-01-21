@@ -230,6 +230,30 @@ export const SharePointService = {
     return SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, ID!, rest);
   },
 
+  async updateCargaComMotorista(id: number, data: { motorista: string, cavalo: string, carreta: string }): Promise<void> {
+    console.log(`[Service] updateCargaComMotorista - ID: ${id}, Motorista: ${data.motorista}`);
+    
+    // Busca telefone automaticamente se houver vínculo
+    const telefones = await this.getTelefones();
+    const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === data.motorista.toLowerCase());
+
+    const fields = {
+      MotoristaNome: data.motorista,
+      PlacaCavalo: data.cavalo,
+      PlacaCarreta: data.carreta,
+      MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null,
+      StatusCavaloConfirmado: true
+    };
+
+    try {
+      await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, id, fields);
+      console.log("[Service] updateCargaComMotorista - Sucesso");
+    } catch (error) {
+      console.error("[Service] updateCargaComMotorista - Erro:", error);
+      throw error;
+    }
+  },
+
   async deleteCarga(id: number): Promise<void> {
     return SharePointService.deleteItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, id);
   },

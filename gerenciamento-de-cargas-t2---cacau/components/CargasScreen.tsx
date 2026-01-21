@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { T2_Carga, T2_Origem, T2_Destino, ProdutoType, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
 import { PRODUTOS } from '../constants';
+import MotoristaModal from './MotoristaModal';
+import { FrotaMotorista } from '../services/n8nService';
 
 interface CargasProps {
   notify: (msg: string, type: ToastType) => void;
@@ -12,9 +14,10 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showMotoristaModal, setShowMotoristaModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T2_Carga | null>(null);
+  const [selectedCargaForMotorista, setSelectedCargaForMotorista] = useState<T2_Carga | null>(null);
   
-  // Estados para referências de Origem e Destino
   const [origens, setOrigens] = useState<T2_Origem[]>([]);
   const [destinos, setDestinos] = useState<T2_Destino[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(false);
@@ -23,7 +26,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
 
-  // Função auxiliar para gerar ID automático
   const generateCargaId = () => {
     console.log("[UI] generateCargaId - Gerando timestamp");
     const now = new Date();
@@ -49,7 +51,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     StatusSistema: 'Pendente'
   });
 
-  // Efeito para carregar as listas de Origens e Destinos do SharePoint
   useEffect(() => {
     const loadReferences = async () => {
       console.log("[UI] loadReferences - Buscando origens e destinos");
@@ -100,7 +101,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         await SharePointService.updateCarga({ ...editingItem, ...formData } as T2_Carga);
         notify("Carga atualizada com sucesso!", "success");
       } else {
-        // Injeção de valores vazios para campos de transporte conforme Regras Rígidas
         const payload = {
           ...formData,
           MotoristaNome: '',
@@ -152,6 +152,29 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       StatusSistema: 'Pendente'
     });
     setShowModal(true);
+  };
+
+  const openMotoristaModal = (item: T2_Carga) => {
+    setSelectedCargaForMotorista(item);
+    setShowMotoristaModal(true);
+  };
+
+  const handleMotoristaSelect = async (motoristaFrota: FrotaMotorista) => {
+    if (!selectedCargaForMotorista?.ID) return;
+    
+    console.log("[UI] handleMotoristaSelect - Vinculando:", motoristaFrota.MOTORISTA);
+    try {
+      await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
+        motorista: motoristaFrota.MOTORISTA,
+        cavalo: motoristaFrota.CAVALO,
+        carreta: motoristaFrota.CARRETA
+      });
+      notify(`Motorista ${motoristaFrota.MOTORISTA} vinculado!`, "success");
+      setShowMotoristaModal(false);
+      fetchData();
+    } catch (error: any) {
+      notify("Erro ao vincular motorista: " + (error.message || "Erro de API"), "error");
+    }
   };
 
   return (
@@ -227,7 +250,10 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <td className="px-4 py-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 border border-slate-200">{item.Produto}</span></td>
                 <td className="px-4 py-4">
                   <div className="font-semibold">{item.MotoristaNome || <span className="text-slate-300 italic">Não atribuído</span>}</div>
-                  <div className="text-[10px] text-slate-400 font-medium">{item.MotoristaTelefone || 'Sem Contato'}</div>
+                  <div className="text-[10px] text-slate-400 font-medium">
+                    {item.PlacaCavalo && <span className="mr-2">🚛 {item.PlacaCavalo}</span>}
+                    {item.MotoristaTelefone || 'Sem Contato'}
+                  </div>
                 </td>
                 <td className="px-4 py-4">
                   <div className="text-xs">{item.Origem} &rarr; {item.Destino}</div>
@@ -245,6 +271,13 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 </td>
                 <td className="px-4 py-4 text-right">
                   <div className="flex justify-end gap-1">
+                    <button 
+                      onClick={() => openMotoristaModal(item)} 
+                      title="Vincular Motorista"
+                      className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg>
+                    </button>
                     <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
                     <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
@@ -335,6 +368,13 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
             </form>
           </div>
         </div>
+      )}
+
+      {showMotoristaModal && (
+        <MotoristaModal 
+          onClose={() => setShowMotoristaModal(false)}
+          onSelect={handleMotoristaSelect}
+        />
       )}
     </div>
   );
