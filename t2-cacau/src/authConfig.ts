@@ -1,26 +1,27 @@
 import { Configuration, PopupRequest } from "@azure/msal-browser";
 
+// Configuração de Autenticação com Tenant Específico
 export const msalConfig: Configuration = {
     auth: {
         clientId: "3170544c-21a9-46db-97ab-c4da57a8e7bf",
-        authority: "https://login.microsoftonline.com/common", // Tenta descobrir o tenant automaticamente ou usa 'common'
-        redirectUri: window.location.origin, // http://localhost:5173 ou a URL de produção
+        // Atualizado para o Tenant ID fornecido
+        authority: "https://login.microsoftonline.com/516b9f7c-dda1-41db-bfbb-f6facbdfff00",
+        redirectUri: window.location.origin,
     },
     cache: {
-        cacheLocation: "sessionStorage", // This configures where your cache will be stored
-        storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
+        cacheLocation: "sessionStorage",
+        storeAuthStateInCookie: false,
     },
 };
 
-// Add scopes here for ID token to be used at Microsoft identity platform endpoints.
 export const loginRequest: PopupRequest = {
     scopes: ["User.Read", "Sites.ReadWrite.All"]
 };
 
-// Configuração dos IDs das Listas do SharePoint
+// Configuração dos IDs das Listas do SharePoint conforme solicitado
 export const SHAREPOINT_CONFIG = {
     hostname: "vialacteoscombr.sharepoint.com",
-    sitePath: "/sites/Powerapps", // Caminho relativo do site
+    sitePath: "/sites/Powerapps",
     lists: {
         origens: '29317589-132f-4bd6-8ce4-9931a403ce32',
         destinos: 'b77325a7-eee2-468c-af89-c14110c04568',
