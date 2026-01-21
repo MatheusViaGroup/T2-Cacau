@@ -1,16 +1,19 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { T2_Carga, ProdutoType } from '../types';
+import { T2_Carga, ProdutoType, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
 import { PRODUTOS } from '../constants';
 
-const CargasScreen: React.FC = () => {
+interface CargasProps {
+  notify: (msg: string, type: ToastType) => void;
+}
+
+const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T2_Carga | null>(null);
   
-  // Filters
   const [filterMotorista, setFilterMotorista] = useState('');
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
@@ -30,7 +33,6 @@ const CargasScreen: React.FC = () => {
   });
 
   const fetchData = useCallback(async () => {
-    console.log("[UI] CargasScreen.fetchData - Chamado");
     setIsLoading(true);
     try {
       const data = await SharePointService.getCargas({
@@ -39,12 +41,13 @@ const CargasScreen: React.FC = () => {
         data: filterData
       });
       setCargas(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("[UI] CargasScreen.fetchData - Erro:", err);
+      notify("Erro ao buscar cargas: " + (err.message || "Falha na conexão"), "error");
     } finally {
       setIsLoading(false);
     }
-  }, [filterMotorista, filterProduto, filterData]);
+  }, [filterMotorista, filterProduto, filterData, notify]);
 
   useEffect(() => {
     fetchData();
@@ -52,24 +55,24 @@ const CargasScreen: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[UI] CargasScreen.handleSubmit - Início");
-    
     try {
       if (editingItem) {
         await SharePointService.updateCarga({ ...editingItem, ...formData } as T2_Carga);
+        notify("Carga atualizada com sucesso!", "success");
       } else {
         await SharePointService.createCarga(formData as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
+        notify("Nova carga registrada!", "success");
       }
       setShowModal(false);
       setEditingItem(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error("[UI] CargasScreen.handleSubmit - Erro:", err);
+      notify("Erro ao salvar carga: " + (err.message || "Erro no SharePoint"), "error");
     }
   };
 
   const handleEdit = (item: T2_Carga) => {
-    console.log("[UI] CargasScreen.handleEdit - Item:", item);
     setEditingItem(item);
     setFormData(item);
     setShowModal(true);
@@ -77,12 +80,12 @@ const CargasScreen: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!window.confirm("Deseja realmente excluir esta carga?")) return;
-    console.log("[UI] CargasScreen.handleDelete - ID:", id);
     try {
       await SharePointService.deleteCarga(id);
+      notify("Carga removida!", "info");
       fetchData();
-    } catch (err) {
-      console.error("[UI] CargasScreen.handleDelete - Erro:", err);
+    } catch (err: any) {
+      notify("Erro ao excluir: " + (err.message || "Erro no servidor"), "error");
     }
   };
 
@@ -97,17 +100,10 @@ const CargasScreen: React.FC = () => {
           onClick={() => {
             setEditingItem(null);
             setFormData({
-              CargaId: '',
-              Origem: '',
-              Destino: '',
-              DataColeta: '',
-              HorarioAgendamento: '',
-              Produto: 'Manteiga',
-              MotoristaNome: '',
-              PlacaCavalo: '',
-              PlacaCarreta: '',
-              StatusCavaloConfirmado: false,
-              StatusSistema: 'Pendente'
+              CargaId: '', Origem: '', Destino: '', DataColeta: '',
+              HorarioAgendamento: '', Produto: 'Manteiga',
+              MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
+              StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
             });
             setShowModal(true);
           }}
@@ -118,8 +114,7 @@ const CargasScreen: React.FC = () => {
         </button>
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-4">
+      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-4 text-sm">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Motorista</label>
           <input 
@@ -127,7 +122,7 @@ const CargasScreen: React.FC = () => {
             value={filterMotorista}
             onChange={(e) => setFilterMotorista(e.target.value)}
             placeholder="Filtrar por nome..." 
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
           />
         </div>
         <div className="w-48">
@@ -135,7 +130,7 @@ const CargasScreen: React.FC = () => {
           <select 
             value={filterProduto}
             onChange={(e) => setFilterProduto(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
           >
             <option value="">Todos</option>
             {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -147,69 +142,55 @@ const CargasScreen: React.FC = () => {
             type="date" 
             value={filterData}
             onChange={(e) => setFilterData(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
           />
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-full text-left border-collapse bg-white">
-          <thead className="bg-slate-800 text-slate-200 text-xs uppercase font-semibold">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-800 text-slate-200 text-[10px] uppercase font-bold">
             <tr>
               <th className="px-4 py-3">Carga ID</th>
               <th className="px-4 py-3">Produto</th>
               <th className="px-4 py-3">Motorista</th>
-              <th className="px-4 py-3">Origem / Destino</th>
-              <th className="px-4 py-3">Data / Hora</th>
+              <th className="px-4 py-3">Rota</th>
+              <th className="px-4 py-3">Data/Hora</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400">Carregando dados...</td>
-              </tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Processando dados do SharePoint...</td></tr>
             ) : cargas.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400">Nenhuma carga encontrada.</td>
-              </tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Nenhum registro encontrado.</td></tr>
             ) : cargas.map(item => (
-              <tr key={item.ID} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-4 font-bold text-amber-600">{item.CargaId}</td>
+              <tr key={item.ID} className="hover:bg-slate-50 transition-colors text-sm">
+                <td className="px-4 py-4 font-bold text-amber-600 uppercase">{item.CargaId}</td>
+                <td className="px-4 py-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 border border-slate-200">{item.Produto}</span></td>
                 <td className="px-4 py-4">
-                  <span className="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-bold text-slate-600 border border-slate-200">
-                    {item.Produto}
-                  </span>
+                  <div className="font-semibold">{item.MotoristaNome}</div>
+                  <div className="text-[10px] text-slate-400 font-medium">{item.MotoristaTelefone || 'Sem Contato'}</div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="font-medium text-slate-700">{item.MotoristaNome}</div>
-                  <div className="text-xs text-slate-500">{item.MotoristaTelefone || 'S/ Telefone'}</div>
+                  <div className="text-xs">{item.Origem} &rarr; {item.Destino}</div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="text-sm">De: <span className="font-medium">{item.Origem}</span></div>
-                  <div className="text-sm">Para: <span className="font-medium">{item.Destino}</span></div>
+                  <div className="font-medium">{item.DataColeta}</div>
+                  <div className="text-[10px] text-slate-400">{item.HorarioAgendamento}</div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="text-sm font-medium">{item.DataColeta}</div>
-                  <div className="text-xs text-slate-500">{item.HorarioAgendamento}</div>
-                </td>
-                <td className="px-4 py-4">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                     item.StatusSistema === 'Concluído' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
                   }`}>
                     {item.StatusSistema}
                   </span>
                 </td>
                 <td className="px-4 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                    </button>
-                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
+                  <div className="flex justify-end gap-1">
+                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
                 </td>
               </tr>
@@ -218,9 +199,8 @@ const CargasScreen: React.FC = () => {
         </table>
       </div>
 
-      {/* Modal Form */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-xl font-bold text-slate-800">{editingItem ? 'Editar Carga' : 'Nova Carga'}</h3>
@@ -228,159 +208,30 @@ const CargasScreen: React.FC = () => {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-1">
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Carga ID</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.CargaId} 
-                    onChange={e => setFormData({...formData, CargaId: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="Ex: C-2023-01"
-                  />
-                </div>
-                <div className="col-span-1">
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Produto</label>
-                  <select 
-                    required 
-                    value={formData.Produto} 
-                    onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  >
-                    {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Carga ID</label><input required type="text" value={formData.CargaId} onChange={e => setFormData({...formData, CargaId: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" /></div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Produto</label><select value={formData.Produto} onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">{PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Origem</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.Origem} 
-                    onChange={e => setFormData({...formData, Origem: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Destino</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.Destino} 
-                    onChange={e => setFormData({...formData, Destino: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Origem</label><input required type="text" value={formData.Origem} onChange={e => setFormData({...formData, Origem: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Destino</label><input required type="text" value={formData.Destino} onChange={e => setFormData({...formData, Destino: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Data Coleta</label>
-                  <input 
-                    required 
-                    type="date" 
-                    value={formData.DataColeta} 
-                    onChange={e => setFormData({...formData, DataColeta: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Horário Agendamento</label>
-                  <input 
-                    required 
-                    type="time" 
-                    value={formData.HorarioAgendamento} 
-                    onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data Coleta</label><input required type="date" value={formData.DataColeta} onChange={e => setFormData({...formData, DataColeta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Horário</label><input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                <h4 className="font-bold text-slate-800 text-sm">Dados do Transporte</h4>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Motorista</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.MotoristaNome} 
-                    onChange={e => setFormData({...formData, MotoristaNome: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="Nome completo do motorista"
-                  />
-                  <p className="text-[10px] text-amber-600 mt-1">* O telefone será buscado automaticamente no sistema.</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Placa Cavalo</label>
-                    <input 
-                      required 
-                      type="text" 
-                      value={formData.PlacaCavalo} 
-                      onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="ABC-1234"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Placa Carreta</label>
-                    <input 
-                      required 
-                      type="text" 
-                      value={formData.PlacaCarreta} 
-                      onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="DEF-5678"
-                    />
-                  </div>
-                </div>
+              <div className="bg-slate-50 p-4 rounded-xl space-y-4">
+                 <label className="block text-xs font-bold text-slate-500 uppercase">Transporte</label>
+                 <input placeholder="Motorista" required type="text" value={formData.MotoristaNome} onChange={e => setFormData({...formData, MotoristaNome: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                 <div className="grid grid-cols-2 gap-4">
+                   <input placeholder="Placa Cavalo" required type="text" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                   <input placeholder="Placa Carreta" required type="text" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="confirmado"
-                    checked={formData.StatusCavaloConfirmado}
-                    onChange={e => setFormData({...formData, StatusCavaloConfirmado: e.target.checked})}
-                    className="w-4 h-4 text-amber-600 focus:ring-amber-500 border-slate-300 rounded"
-                  />
-                  <label htmlFor="confirmado" className="text-sm font-medium text-slate-700">Cavalo Confirmado?</label>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Status Sistema</label>
-                  <select 
-                    value={formData.StatusSistema} 
-                    onChange={e => setFormData({...formData, StatusSistema: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  >
-                    <option value="Pendente">Pendente</option>
-                    <option value="Em Trânsito">Em Trânsito</option>
-                    <option value="Concluído">Concluído</option>
-                    <option value="Cancelado">Cancelado</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-6 flex gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl transition-colors shadow-sm"
-                >
-                  Salvar Carga
-                </button>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-2.5 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button type="submit" className="flex-1 bg-amber-500 text-white py-2.5 rounded-xl font-bold shadow-sm">Salvar Registro</button>
               </div>
             </form>
           </div>

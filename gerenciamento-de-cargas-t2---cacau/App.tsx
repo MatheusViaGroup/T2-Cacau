@@ -1,16 +1,47 @@
 
-import React, { useState, useEffect } from 'react';
-import { Screen } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Screen, ToastMessage, ToastType } from './types';
 import { AuthService } from './services/authService';
 import CargasScreen from './components/CargasScreen';
 import RestricoesScreen from './components/RestricoesScreen';
 import AdminScreen from './components/AdminScreen';
+
+// Componente de Toast Individual
+const Toast: React.FC<{ toast: ToastMessage; onClose: (id: number) => void }> = ({ toast, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => onClose(toast.id), 5000);
+    return () => clearTimeout(timer);
+  }, [toast.id, onClose]);
+
+  const bgColor = toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+
+  return (
+    <div className={`${bgColor} text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-in-right mb-2 min-w-[300px]`}>
+      {toast.type === 'success' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>}
+      {toast.type === 'error' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}
+      <span className="flex-1 font-medium">{toast.message}</span>
+      <button onClick={() => onClose(toast.id)} className="hover:opacity-70">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [activeScreen, setActiveScreen] = useState<Screen>(Screen.CARGAS);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userAccount, setUserAccount] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = useCallback((message: string, type: ToastType = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -34,9 +65,10 @@ const App: React.FC = () => {
       const result = await AuthService.login();
       setUserAccount(result.account);
       setIsAuthenticated(true);
-    } catch (err) {
+      showToast("Bem-vindo ao sistema!", "success");
+    } catch (err: any) {
       console.error("Erro no login:", err);
-      alert("Falha ao realizar login. Verifique suas credenciais.");
+      showToast("Falha no login: " + (err.message || "Erro desconhecido"), "error");
     }
   };
 
@@ -44,6 +76,7 @@ const App: React.FC = () => {
     await AuthService.logout();
     setIsAuthenticated(false);
     setUserAccount(null);
+    showToast("Sessão encerrada", "info");
   };
 
   if (loading) {
@@ -86,7 +119,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
+      {/* Toast Container */}
+      <div className="fixed top-5 right-5 z-[200] flex flex-col items-end">
+        {toasts.map(t => <Toast key={t.id} toast={t} onClose={removeToast} />)}
+      </div>
+
       <header className="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
@@ -130,21 +167,28 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[600px] overflow-hidden">
-          {activeScreen === Screen.CARGAS && <CargasScreen />}
-          {activeScreen === Screen.RESTRICOES && <RestricoesScreen />}
-          {activeScreen === Screen.ADMIN && <AdminScreen />}
+          {activeScreen === Screen.CARGAS && <CargasScreen notify={showToast} />}
+          {activeScreen === Screen.RESTRICOES && <RestricoesScreen notify={showToast} />}
+          {activeScreen === Screen.ADMIN && <AdminScreen notify={showToast} />}
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="bg-slate-50 border-t border-slate-200 py-6">
         <div className="container mx-auto px-4 text-center text-slate-500 text-sm">
-          &copy; {new Date().getFullYear()} Vialacteos - Sistema de Gestão T2 Cacau. Todos os direitos reservados.
+          &copy; {new Date().getFullYear()} Vialacteos - Sistema de Gestão T2 Cacau.
         </div>
       </footer>
+      <style>{`
+        @keyframes slide-in-right {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in-right {
+          animation: slide-in-right 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };

@@ -1,6 +1,14 @@
 
 export type ProdutoType = 'Manteiga' | 'Licor' | 'Manteiga Raw' | 'Licor Raw';
 
+export type ToastType = 'success' | 'error' | 'info';
+
+export interface ToastMessage {
+  id: number;
+  message: string;
+  type: ToastType;
+}
+
 export interface T2_Origem {
   ID?: number;
   NomeLocal: string;
