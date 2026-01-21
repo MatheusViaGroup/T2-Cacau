@@ -38,7 +38,7 @@ const MotoristaModal: React.FC<MotoristaModalProps> = ({ onClose, onSelect }) =>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden max-h-[85vh] flex flex-col">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+            <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1-1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
             Vincular Motorista (Frota)
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2">
@@ -86,6 +86,20 @@ const MotoristaModal: React.FC<MotoristaModalProps> = ({ onClose, onSelect }) =>
                       Carreta: {m.CARRETA}
                     </span>
                   </div>
+                  {/* Status do motorista */}
+                  {m.EVO_DESCRICAO_RESUMIDA && (
+                    <div className="mt-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        m.EVO_DESCRICAO_RESUMIDA.toLowerCase().includes('vazio') 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : m.EVO_DESCRICAO_RESUMIDA.toLowerCase().includes('viagem')
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        📍 {m.EVO_DESCRICAO_RESUMIDA}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="bg-slate-100 p-2 rounded-lg group-hover:bg-amber-500 group-hover:text-white transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
