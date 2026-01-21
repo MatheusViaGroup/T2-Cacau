@@ -163,29 +163,31 @@ export const SharePointService = {
     return data;
   },
 
-  // Fixed: MotoristaTelefone is excluded from input type because the service looks it up internally
-  async createCarga(carga: Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>): Promise<T2_Carga> {
+  async createCarga(carga: Omit<T2_Carga, 'ID'>): Promise<T2_Carga> {
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
 
+    // Separa o ID do resto
     const { CargaId, ...rest } = carga;
 
-    // Objeto base
     const payload: any = {
-        Title: CargaId, // Obrigatório: Mapeia o ID gerado para a coluna Title
+        // MAPEAMENTO CRÍTICO: O valor do nosso 'CargaId' vai para o campo interno 'Title' do SharePoint
+        Title: CargaId, 
         ...rest,
-        MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null // Null é preferível a string vazia para tipos complexos
+        MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
     };
 
-    // LIMPEZA: Remove campos vazios para evitar erro 500 em colunas de Data, Número ou Boolean no SharePoint
+    // Remove chaves vazias ou nulas para evitar erro 500 em outros campos
     Object.keys(payload).forEach(key => {
         if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
             delete payload[key];
         }
     });
+    
+    // Garante que 'CargaId' NÃO seja enviado como chave, pois essa coluna não existe internamente
+    delete payload.CargaId; 
 
-    // Re-garante o Title caso tenha sido apagado (medida de segurança)
-    payload.Title = CargaId; 
+    console.log("[DEBUG] Payload corrigido enviado:", JSON.stringify(payload));
 
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
   },
