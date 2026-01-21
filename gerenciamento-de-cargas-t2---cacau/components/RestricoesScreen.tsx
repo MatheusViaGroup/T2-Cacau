@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { T2_Restricao, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
+import { n8nService, FrotaMotorista } from '../services/n8nService';
 
 interface RestricoesProps {
   notify: (msg: string, type: ToastType) => void;
@@ -13,12 +13,16 @@ const RestricoesScreen: React.FC<RestricoesProps> = ({ notify }) => {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T2_Restricao | null>(null);
 
+  const [motoristasDisponiveis, setMotoristasDisponiveis] = useState<FrotaMotorista[]>([]);
+  const [loadingMotoristas, setLoadingMotoristas] = useState(false);
+
   const [formData, setFormData] = useState<Partial<T2_Restricao>>({
     Motorista: '', PlacaCavalo: '', PlacaCarreta: '',
     DataParou: '', DataVoltou: '', Observação: ''
   });
 
   const fetchData = useCallback(async () => {
+    console.log("[RestricoesScreen] fetchData - Buscando restrições do SharePoint");
     setIsLoading(true);
     try {
       const data = await SharePointService.getRestricoes();
@@ -34,8 +38,45 @@ const RestricoesScreen: React.FC<RestricoesProps> = ({ notify }) => {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    const loadMotoristas = async () => {
+      console.log("[RestricoesScreen] loadMotoristas - Carregando frota do n8n para o formulário");
+      setLoadingMotoristas(true);
+      try {
+        const data = await n8nService.getFrotaMotoristas();
+        setMotoristasDisponiveis(data);
+      } catch (err) {
+        console.error("[RestricoesScreen] Erro ao carregar motoristas:", err);
+      } finally {
+        setLoadingMotoristas(false);
+      }
+    };
+    loadMotoristas();
+  }, []);
+
+  const handleMotoristaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nomeMotorista = e.target.value;
+    console.log("[RestricoesScreen] handleMotoristaChange - Selecionado:", nomeMotorista);
+    
+    // Busca os dados completos do motorista selecionado para auto-preencher as placas
+    const motoristaData = motoristasDisponiveis.find(m => m.MOTORISTA === nomeMotorista);
+    
+    if (motoristaData) {
+      console.log("[RestricoesScreen] Auto-preenchendo placas para:", nomeMotorista);
+      setFormData(prev => ({
+        ...prev,
+        Motorista: nomeMotorista,
+        PlacaCavalo: motoristaData.CAVALO,
+        PlacaCarreta: motoristaData.CARRETA
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, Motorista: nomeMotorista }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[RestricoesScreen] handleSubmit - Payload:", formData);
     try {
       if (editingItem) {
         await SharePointService.updateRestricao({ ...editingItem, ...formData } as T2_Restricao);
@@ -48,6 +89,7 @@ const RestricoesScreen: React.FC<RestricoesProps> = ({ notify }) => {
       setEditingItem(null);
       fetchData();
     } catch (err: any) {
+      console.error("[RestricoesScreen] handleSubmit - Erro:", err);
       notify("Erro ao salvar: " + (err.message || "Erro desconhecido"), "error");
     }
   };
@@ -109,22 +151,56 @@ const RestricoesScreen: React.FC<RestricoesProps> = ({ notify }) => {
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="p-6 border-b flex justify-between">
-              <h3 className="text-xl font-bold">{editingItem ? 'Editar Pausa' : 'Nova Restrição'}</h3>
-              <button onClick={() => setShowModal(false)}>&times;</button>
+            <div className="p-6 border-b flex justify-between items-center">
+              <h3 className="text-xl font-bold text-slate-800">{editingItem ? 'Editar Pausa' : 'Nova Restrição'}</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-               <input required placeholder="Motorista" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.Motorista} onChange={e => setFormData({...formData, Motorista: e.target.value})} />
-               <div className="grid grid-cols-2 gap-2">
-                 <input required placeholder="Placa Cavalo" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} />
-                 <input required placeholder="Placa Carreta" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} />
+               <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Motorista</label>
+                 <select 
+                   required
+                   value={formData.Motorista}
+                   onChange={handleMotoristaChange}
+                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                 >
+                   <option value="">{loadingMotoristas ? 'Carregando frota...' : 'Selecione o motorista...'}</option>
+                   {motoristasDisponiveis.map((m, idx) => (
+                     <option key={idx} value={m.MOTORISTA}>
+                       {m.MOTORISTA}
+                     </option>
+                   ))}
+                 </select>
                </div>
-               <div className="grid grid-cols-2 gap-2">
-                 <input required type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.DataParou} onChange={e => setFormData({...formData, DataParou: e.target.value})} />
-                 <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.DataVoltou} onChange={e => setFormData({...formData, DataVoltou: e.target.value})} />
+               <div className="grid grid-cols-2 gap-3">
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Placa Cavalo</label>
+                   <input required placeholder="ABC1234" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} />
+                 </div>
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Placa Carreta</label>
+                   <input required placeholder="XYZ5678" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} />
+                 </div>
                </div>
-               <textarea required placeholder="Motivo/Observação" className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={formData.Observação} onChange={e => setFormData({...formData, Observação: e.target.value})} />
-               <button type="submit" className="w-full bg-amber-500 text-white font-bold py-3 rounded-xl">Salvar Registro</button>
+               <div className="grid grid-cols-2 gap-3">
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Início</label>
+                   <input required type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" value={formData.DataParou} onChange={e => setFormData({...formData, DataParou: e.target.value})} />
+                 </div>
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Previsão Volta</label>
+                   <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" value={formData.DataVoltou} onChange={e => setFormData({...formData, DataVoltou: e.target.value})} />
+                 </div>
+               </div>
+               <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Motivo/Observação</label>
+                 <textarea required placeholder="Descreva o motivo da pausa..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" rows={3} value={formData.Observação} onChange={e => setFormData({...formData, Observação: e.target.value})} />
+               </div>
+               <button type="submit" className="w-full bg-amber-500 text-white font-bold py-3 rounded-xl shadow-md hover:bg-amber-600 transition-colors">
+                 {editingItem ? 'Salvar Alterações' : 'Salvar Registro'}
+               </button>
             </form>
           </div>
         </div>
