@@ -167,27 +167,21 @@ export const SharePointService = {
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
 
-    // Separa o ID do resto
-    const { CargaId, ...rest } = carga;
-
     const payload: any = {
-        // MAPEAMENTO CRÍTICO: O valor do nosso 'CargaId' vai para o campo interno 'Title' do SharePoint
-        Title: CargaId, 
-        ...rest,
+        Title: carga.CargaId, // Mantemos o ID no Title para facilitar busca visual na lista
+        CargaId: carga.CargaId, // Agora gravamos também na coluna específica (se ela tiver esse nome interno)
+        ...carga,
         MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
     };
 
-    // Remove chaves vazias ou nulas para evitar erro 500 em outros campos
+    // Limpeza padrão de campos vazios
     Object.keys(payload).forEach(key => {
         if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
             delete payload[key];
         }
     });
-    
-    // Garante que 'CargaId' NÃO seja enviado como chave, pois essa coluna não existe internamente
-    delete payload.CargaId; 
 
-    console.log("[DEBUG] Payload corrigido enviado:", JSON.stringify(payload));
+    console.log("[DEBUG] Payload com nova estrutura CargaId + Title:", JSON.stringify(payload));
 
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
   },
