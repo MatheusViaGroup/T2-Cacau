@@ -57,7 +57,7 @@ export const SharePointService = {
       console.log("📊 [Service] Resultado das Colunas (InternalName é o que importa para a API):");
       console.table(data.value.map((col: any) => ({
           DisplayName: col.displayName,
-          InternalName: col.name, // <--- ESTE É O NOME QUE PRECISAMOS
+          InternalName: col.name, 
           Type: col.text ? 'Text' : (col.number ? 'Number' : (col.dateTime ? 'DateTime' : 'Outro'))
       })));
     } catch (err) {
@@ -70,7 +70,6 @@ export const SharePointService = {
     const siteId = await SharePointService.getSiteId();
     const token = await AuthService.getToken();
     
-    // Expand=fields é necessário para ler as colunas customizadas
     const response = await fetch(`${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/items?expand=fields`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -82,17 +81,15 @@ export const SharePointService = {
     
     const data = await response.json();
     
-    // Mapeamos os campos internos para o formato da nossa interface
     const items = data.value.map((item: any) => {
       const f = item.fields;
       return {
         ID: f.id,
-        // Fallback: Se NomeLocal foi mapeado para Title, pegamos de Title
         NomeLocal: f.NomeLocal || f.Title,
         Motorista: f.Motorista || f.Title,
         NomeMotorista: f.NomeMotorista || f.Title,
-        // CargaId pode vir de Carga_Id, CargaId ou Title
-        CargaId: f.Carga_Id || f.CargaId || f.Title,
+        // CargaId agora prioriza a nova coluna CodCarga
+        CargaId: f.CodCarga || f.Carga_Id || f.CargaId || f.Title,
         ...f
       } as unknown as T;
     });
@@ -198,20 +195,20 @@ export const SharePointService = {
     const { CargaId, ...rest } = carga;
 
     const payload: any = {
-        Title: CargaId,      // Envia para o Title padrão
-        Carga_Id: CargaId,   // Envia para a nova coluna Carga_Id explicitamente
+        Title: CargaId,      // Fallback padrão de visualização
+        CodCarga: CargaId,   // NOVA COLUNA LIMPA COM NOME INTERNO GARANTIDO
         ...rest,
         MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
     };
 
-    // Remove campos vazios para evitar erro 500 em colunas de tipos específicos
+    // Limpeza de campos vazios para evitar erro 500 no SharePoint
     Object.keys(payload).forEach(key => {
         if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
             delete payload[key];
         }
     });
 
-    console.log("[DEBUG] Payload Final enviado ao SharePoint:", JSON.stringify(payload));
+    console.log("[DEBUG] Payload com CodCarga:", JSON.stringify(payload));
 
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
   },
