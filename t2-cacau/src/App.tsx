@@ -1,25 +1,43 @@
-import React, { PropsWithChildren } from 'react';
+import React, { useEffect, PropsWithChildren } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MsalProvider, useIsAuthenticated, useMsal } from "@azure/msal-react";
+import { msalInstance } from './services/dataService';
 import { Layout } from './components/Layout';
 import { CargasPage } from './pages/Cargas';
 import { AdminPage } from './pages/Admin';
 import { RestricoesPage } from './pages/Restricoes';
 import { LoginPage } from './pages/Login';
 
-// Helper simples de autenticação
-const isAuthenticated = () => {
-    return !!localStorage.getItem('t2_auth_token');
-};
-
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
-  if (!isAuthenticated()) {
+  const isAuthenticated = useIsAuthenticated();
+  const { instance } = useMsal();
+  
+  // Ensure active account is set if authenticated
+  useEffect(() => {
+    if (isAuthenticated && !instance.getActiveAccount()) {
+        const accounts = instance.getAllAccounts();
+        if (accounts.length > 0) {
+            instance.setActiveAccount(accounts[0]);
+        }
+    }
+  }, [isAuthenticated, instance]);
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
 };
 
 const LoginRoute = () => {
-    if (isAuthenticated()) {
+    const isAuthenticated = useIsAuthenticated();
+    const { instance } = useMsal();
+
+    // Handle redirect promise to process token response after redirect
+    useEffect(() => {
+        instance.handleRedirectPromise().catch(error => console.error("Redirect error:", error));
+    }, [instance]);
+
+    if (isAuthenticated) {
         return <Navigate to="/" replace />;
     }
     return <LoginPage />;
@@ -27,6 +45,7 @@ const LoginRoute = () => {
 
 const App = () => {
   return (
+    <MsalProvider instance={msalInstance}>
       <HashRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
@@ -43,6 +62,7 @@ const App = () => {
           </Route>
         </Routes>
       </HashRouter>
+    </MsalProvider>
   );
 };
 

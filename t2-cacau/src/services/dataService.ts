@@ -1,160 +1,231 @@
+import { Client } from "@microsoft/microsoft-graph-client";
+import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { msalConfig, SHAREPOINT_CONFIG, loginRequest } from "../authConfig";
 import { Origem, Destino, Carga, Restricao, ContatoMotorista } from '../types';
 
-// --- LOCAL STORAGE KEYS ---
-const KEYS = {
-    ORIGENS: 't2_origens',
-    DESTINOS: 't2_destinos',
-    CARGAS: 't2_cargas',
-    RESTRICOES: 't2_restricoes',
-    CONTATOS: 't2_contatos'
-};
+// Initialize MSAL
+export const msalInstance = new PublicClientApplication(msalConfig);
 
-// --- SEED DATA (Para não iniciar vazio) ---
-const SEED = {
-    ORIGENS: [
-        { id: '1', nome: 'Fazenda Santa Rita' },
-        { id: '2', nome: 'Fazenda Ouro Verde' }
-    ],
-    DESTINOS: [
-        { id: '1', nome: 'Porto de Ilhéus' },
-        { id: '2', nome: 'Fábrica Sede' }
-    ],
-    CARGAS: [],
-    RESTRICOES: [],
-    CONTATOS: []
-};
-
-// --- HELPER FUNCTIONS ---
-const getStorage = <T>(key: string, seed: T[]): T[] => {
-    const data = localStorage.getItem(key);
-    if (!data) {
-        localStorage.setItem(key, JSON.stringify(seed));
-        return seed;
+// Helper to get authenticated Graph Client
+const getGraphClient = async () => {
+    const account = msalInstance.getActiveAccount();
+    if (!account) {
+        // If no active account, try to set the first available
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+            msalInstance.setActiveAccount(accounts[0]);
+        } else {
+            // Cannot proceed without user context
+            throw new Error("Usuário não autenticado.");
+        }
     }
-    return JSON.parse(data);
+
+    let accessToken = "";
+    try {
+        const response = await msalInstance.acquireTokenSilent({
+            ...loginRequest,
+            account: msalInstance.getActiveAccount()!
+        });
+        accessToken = response.accessToken;
+    } catch (error) {
+        if (error instanceof InteractionRequiredAuthError) {
+            // Force redirect for interaction if silent fails
+            await msalInstance.acquireTokenRedirect(loginRequest);
+            // Execution stops here due to redirect
+        }
+        throw error;
+    }
+
+    return Client.init({
+        authProvider: (done) => {
+            done(null, accessToken);
+        }
+    });
 };
 
-const setStorage = <T>(key: string, data: T[]) => {
-    localStorage.setItem(key, JSON.stringify(data));
+// Cache for Site ID
+let cachedSiteId: string | null = null;
+
+const getSiteId = async (client: Client) => {
+    if (cachedSiteId) return cachedSiteId;
+    
+    // Construct request to get site by host and path
+    const site = await client.api(`/sites/${SHAREPOINT_CONFIG.hostname}:${SHAREPOINT_CONFIG.sitePath}`).get();
+    cachedSiteId = site.id;
+    return cachedSiteId;
 };
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+// --- GENERIC SHAREPOINT HELPERS ---
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const getListItems = async (listId: string) => {
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client);
+    // Expand fields to access custom columns
+    const response = await client.api(`/sites/${siteId}/lists/${listId}/items?expand=fields`).get();
+    return response.value;
+};
 
-// --- DATA SERVICE LOCAL IMPLEMENTATION ---
+const addItem = async (listId: string, fields: any) => {
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client);
+    return await client.api(`/sites/${siteId}/lists/${listId}/items`).post({ fields });
+};
+
+const deleteItem = async (listId: string, itemId: string) => {
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client);
+    await client.api(`/sites/${siteId}/lists/${listId}/items/${itemId}`).delete();
+};
+
+const updateItem = async (listId: string, itemId: string, fields: any) => {
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client);
+    return await client.api(`/sites/${siteId}/lists/${listId}/items/${itemId}`).patch({ fields });
+};
+
+// --- DATA SERVICE IMPLEMENTATION ---
 
 export const DataService = {
     
     // --- ORIGENS ---
     getOrigens: async (): Promise<Origem[]> => {
-        await delay(300); // Simulate network latency
-        return getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
+        try {
+            const items = await getListItems(SHAREPOINT_CONFIG.lists.origens);
+            return items.map((item: any) => ({
+                id: item.id,
+                nome: item.fields.NomeLocal || item.fields.Title
+            }));
+        } catch (e) { console.error(e); return []; }
     },
     addOrigem: async (nome: string) => {
-        await delay(300);
-        const list = getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
-        list.push({ id: generateId(), nome });
-        setStorage(KEYS.ORIGENS, list);
+        await addItem(SHAREPOINT_CONFIG.lists.origens, { Title: nome, NomeLocal: nome });
     },
     deleteOrigem: async (id: string) => {
-        await delay(300);
-        const list = getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
-        setStorage(KEYS.ORIGENS, list.filter(i => i.id !== id));
+        await deleteItem(SHAREPOINT_CONFIG.lists.origens, id);
     },
 
     // --- DESTINOS ---
     getDestinos: async (): Promise<Destino[]> => {
-        await delay(300);
-        return getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
+        try {
+            const items = await getListItems(SHAREPOINT_CONFIG.lists.destinos);
+            return items.map((item: any) => ({
+                id: item.id,
+                nome: item.fields.NomeLocal || item.fields.Title
+            }));
+        } catch (e) { console.error(e); return []; }
     },
     addDestino: async (nome: string) => {
-        await delay(300);
-        const list = getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
-        list.push({ id: generateId(), nome });
-        setStorage(KEYS.DESTINOS, list);
+        await addItem(SHAREPOINT_CONFIG.lists.destinos, { Title: nome, NomeLocal: nome });
     },
     deleteDestino: async (id: string) => {
-        await delay(300);
-        const list = getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
-        setStorage(KEYS.DESTINOS, list.filter(i => i.id !== id));
+        await deleteItem(SHAREPOINT_CONFIG.lists.destinos, id);
     },
 
     // --- CARGAS ---
     getCargas: async (): Promise<Carga[]> => {
-        await delay(500);
-        return getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
+        try {
+            const items = await getListItems(SHAREPOINT_CONFIG.lists.cargas);
+            return items.map((item: any) => ({
+                id: item.id,
+                origemId: item.fields.Origem,
+                destinoId: item.fields.Destino,
+                dataColeta: item.fields.DataColeta,
+                horarioAgendamento: item.fields.HorarioAgendamento,
+                produto: item.fields.Produto,
+                motoristaNome: item.fields.MotoristaNome,
+                placaCavalo: item.fields.PlacaCavalo,
+                placaCarreta: item.fields.PlacaCarreta,
+                statusCavaloConfirmado: item.fields.StatusCavaloConfirmado
+            }));
+        } catch (e) { console.error(e); return []; }
     },
     saveCarga: async (carga: Carga) => {
-        await delay(500);
-        const list = getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
+        const fields = {
+            Title: carga.produto || 'Carga',
+            CargaId: carga.id || '', // Mapping CargaId column
+            Origem: carga.origemId,
+            Destino: carga.destinoId,
+            DataColeta: carga.dataColeta,
+            HorarioAgendamento: carga.horarioAgendamento,
+            Produto: carga.produto,
+            MotoristaNome: carga.motoristaNome,
+            PlacaCavalo: carga.placaCavalo,
+            PlacaCarreta: carga.placaCarreta,
+            StatusCavaloConfirmado: carga.statusCavaloConfirmado,
+            StatusSistema: 'Ativo'
+        };
         
-        if (carga.id) {
-            // Update
-            const index = list.findIndex(c => c.id === carga.id);
-            if (index !== -1) {
-                list[index] = carga;
-            } else {
-                list.push(carga); // Fallback if ID exists but not found (rare)
-            }
+        // Check if ID is a valid SharePoint ID (numeric string)
+        if (carga.id && !isNaN(Number(carga.id))) { 
+             await updateItem(SHAREPOINT_CONFIG.lists.cargas, carga.id, fields);
         } else {
-            // Create
-            carga.id = generateId();
-            list.push(carga);
+             await addItem(SHAREPOINT_CONFIG.lists.cargas, fields);
         }
-        setStorage(KEYS.CARGAS, list);
     },
     deleteCarga: async (id: string) => {
-        await delay(400);
-        const list = getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
-        setStorage(KEYS.CARGAS, list.filter(c => c.id !== id));
+        await deleteItem(SHAREPOINT_CONFIG.lists.cargas, id);
     },
 
     // --- RESTRIÇÕES ---
     getRestricoes: async (): Promise<Restricao[]> => {
-        await delay(300);
-        return getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
+        try {
+            const items = await getListItems(SHAREPOINT_CONFIG.lists.restricoes);
+            return items.map((item: any) => ({
+                id: item.id,
+                motoristaNome: item.fields.Motorista,
+                placaCavalo: item.fields.PlacaCavalo,
+                placaCarreta: item.fields.PlacaCarreta,
+                dataParou: item.fields.DataParou,
+                dataVoltou: item.fields.DataVoltou,
+                observacao: item.fields['Observação'] || item.fields.Observacao
+            }));
+        } catch (e) { console.error(e); return []; }
     },
     saveRestricao: async (restricao: Restricao) => {
-        await delay(300);
-        const list = getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
-        
-        if (restricao.id) {
-            const index = list.findIndex(r => r.id === restricao.id);
-            if (index !== -1) list[index] = restricao;
+        const fields = {
+            Title: restricao.motoristaNome,
+            Motorista: restricao.motoristaNome,
+            PlacaCavalo: restricao.placaCavalo,
+            PlacaCarreta: restricao.placaCarreta,
+            DataParou: restricao.dataParou,
+            DataVoltou: restricao.dataVoltou,
+            'Observação': restricao.observacao
+        };
+        if (restricao.id && !isNaN(Number(restricao.id))) {
+            await updateItem(SHAREPOINT_CONFIG.lists.restricoes, restricao.id, fields);
         } else {
-            restricao.id = generateId();
-            list.push(restricao);
+            await addItem(SHAREPOINT_CONFIG.lists.restricoes, fields);
         }
-        setStorage(KEYS.RESTRICOES, list);
     },
     deleteRestricao: async (id: string) => {
-        await delay(300);
-        const list = getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
-        setStorage(KEYS.RESTRICOES, list.filter(r => r.id !== id));
+        await deleteItem(SHAREPOINT_CONFIG.lists.restricoes, id);
     },
 
-    // --- CONTATOS ---
+    // --- CONTATOS (Telefones) ---
     getContatos: async (): Promise<ContatoMotorista[]> => {
-        await delay(300);
-        return getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
+        try {
+            const items = await getListItems(SHAREPOINT_CONFIG.lists.telefones);
+            return items.map((item: any) => ({
+                id: item.id,
+                // Attempt to read specific column, fallback to Title if not found
+                motoristaNome: item.fields['Nome Motorista'] || item.fields.Title,
+                telefone: item.fields.TelefoneWhatsapp
+            }));
+        } catch (e) { console.error(e); return []; }
     },
     saveContato: async (contato: ContatoMotorista) => {
-        await delay(300);
-        const list = getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
-        
-        if (contato.id) {
-            const index = list.findIndex(c => c.id === contato.id);
-            if (index !== -1) list[index] = contato;
+        const fields = {
+            Title: contato.motoristaNome,
+            'Nome Motorista': contato.motoristaNome,
+            TelefoneWhatsapp: contato.telefone
+        };
+        if (contato.id && !isNaN(Number(contato.id))) {
+            await updateItem(SHAREPOINT_CONFIG.lists.telefones, contato.id, fields);
         } else {
-            contato.id = generateId();
-            list.push(contato);
+            await addItem(SHAREPOINT_CONFIG.lists.telefones, fields);
         }
-        setStorage(KEYS.CONTATOS, list);
     },
     deleteContato: async (id: string) => {
-        await delay(300);
-        const list = getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
-        setStorage(KEYS.CONTATOS, list.filter(c => c.id !== id));
+        await deleteItem(SHAREPOINT_CONFIG.lists.telefones, id);
     }
 };
