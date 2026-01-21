@@ -20,13 +20,15 @@ export interface Carga {
   horarioAgendamento: string; // HH:mm
   produto: ProdutoTipo;
   
-  // Transport Data (Optional - Assigned later)
+  // Transport Data
   motoristaNome?: string;
   placaCavalo?: string;
   placaCarreta?: string;
-
-  // New Status Field (V4)
+  motoristaTelefone?: string; // Novo campo
+  
+  // Status Fields
   statusCavaloConfirmado?: boolean;
+  statusSistema?: string; // Novo campo
 }
 
 export interface Restricao {
@@ -39,14 +41,12 @@ export interface Restricao {
   observacao: string;
 }
 
-// New Interface for Driver Contacts (V4)
 export interface ContatoMotorista {
   id: string;
   motoristaNome: string;
-  telefone: string; // Format: 55999999999
+  telefone: string; 
 }
 
-// Matches the SQL View provided
 export interface FrotaView {
   CAVALO: string;
   CARRETA: string;
