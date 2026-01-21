@@ -1,0 +1,5 @@
+{
+  "name": "T2 - Cacau Logistics",
+  "description": "Enterprise-grade logistics management for cocoa products, integrating SharePoint Lists via Microsoft Graph and Azure AD auth.",
+  "requestFramePermissions": []
+}
