@@ -46,7 +46,8 @@ export interface T2_Carga {
   MotoristaNome: string;
   PlacaCavalo: string;
   PlacaCarreta: string;
-  MotoristaTelefone: string;
+  // MotoristaTelefone is now optional as it is often resolved from the telephone list
+  MotoristaTelefone?: string;
   StatusCavaloConfirmado: boolean;
   StatusSistema: string;
 }
