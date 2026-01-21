@@ -63,7 +63,8 @@ export const SharePointService = {
         NomeLocal: f.NomeLocal || f.Title,
         Motorista: f.Motorista || f.Title,
         NomeMotorista: f.NomeMotorista || f.Title,
-        CargaId: f.CargaId || f.Title,
+        // CargaId pode vir de Carga_Id, CargaId ou Title
+        CargaId: f.Carga_Id || f.CargaId || f.Title,
         ...f
       } as unknown as T;
     });
@@ -88,9 +89,8 @@ export const SharePointService = {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("[Service] createItem - Erro 400 Detalhado:", errorData);
+      console.error("[Service] createItem - Erro Detalhado:", errorData);
       
-      // Captura a mensagem específica do SharePoint sobre qual campo está errado
       const msg = errorData.error?.message || "Erro desconhecido";
       throw new Error(`Erro na Lista SharePoint: ${msg}`);
     }
@@ -143,7 +143,7 @@ export const SharePointService = {
     const existing = telefones.find(t => t.NomeMotorista?.toLowerCase() === telefone.NomeMotorista.toLowerCase());
     
     const fields = {
-      Title: telefone.NomeMotorista, // Mapeado para o Title original
+      Title: telefone.NomeMotorista,
       TelefoneWhatsapp: telefone.TelefoneWhatsapp
     };
 
@@ -167,21 +167,23 @@ export const SharePointService = {
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
 
+    const { CargaId, ...rest } = carga;
+
     const payload: any = {
-        Title: carga.CargaId, // Mantemos o ID no Title para facilitar busca visual na lista
-        CargaId: carga.CargaId, // Agora gravamos também na coluna específica (se ela tiver esse nome interno)
-        ...carga,
+        Title: CargaId,      // Envia para o Title padrão
+        Carga_Id: CargaId,   // Envia para a nova coluna Carga_Id explicitamente
+        ...rest,
         MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
     };
 
-    // Limpeza padrão de campos vazios
+    // Remove campos vazios para evitar erro 500 em colunas de tipos específicos
     Object.keys(payload).forEach(key => {
         if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
             delete payload[key];
         }
     });
 
-    console.log("[DEBUG] Payload com nova estrutura CargaId + Title:", JSON.stringify(payload));
+    console.log("[DEBUG] Payload Final enviado ao SharePoint:", JSON.stringify(payload));
 
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
   },
@@ -201,7 +203,7 @@ export const SharePointService = {
 
   async createRestricao(item: Omit<T2_Restricao, 'ID'>): Promise<T2_Restricao> {
     const fields = {
-      Title: item.Motorista, // Motorista como Title
+      Title: item.Motorista,
       ...item
     };
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, fields);
@@ -221,8 +223,6 @@ export const SharePointService = {
   },
 
   async saveOrigem(nome: string): Promise<T2_Origem> {
-    // Como você renomeou 'Title' para 'NomeLocal' na interface do SharePoint,
-    // o nome interno para gravação via API Graph CONTINUA SENDO 'Title'.
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.ORIGENS.id, { 
       Title: nome 
     });
@@ -237,7 +237,6 @@ export const SharePointService = {
   },
 
   async saveDestino(nome: string): Promise<T2_Destino> {
-    // Mesma lógica: Renomeou Title -> NomeLocal no UI, mas API usa Title internamente.
     return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.DESTINOS.id, { 
       Title: nome 
     });
