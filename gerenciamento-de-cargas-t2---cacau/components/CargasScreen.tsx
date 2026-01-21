@@ -19,15 +19,16 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [filterData, setFilterData] = useState('');
 
   const generateCargaId = () => {
-    console.log("[UI] generateCargaId - Gerando novo ID");
+    console.log("[UI] generateCargaId - Iniciando geração de ID");
     const now = new Date();
     const timestamp = now.getFullYear().toString() +
       (now.getMonth() + 1).toString().padStart(2, '0') +
       now.getDate().toString().padStart(2, '0') +
       now.getHours().toString().padStart(2, '0') +
       now.getMinutes().toString().padStart(2, '0');
-    console.log("[UI] generateCargaId - ID gerado:", timestamp);
-    return `C${timestamp}`;
+    const newId = `C${timestamp}`;
+    console.log("[UI] generateCargaId - ID gerado com sucesso:", newId);
+    return newId;
   };
 
   const [formData, setFormData] = useState<Partial<T2_Carga>>({
@@ -45,7 +46,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   });
 
   const fetchData = useCallback(async () => {
-    console.log("[UI] CargasScreen.fetchData - Iniciando busca");
+    console.log("[UI] CargasScreen.fetchData - Iniciando busca no SharePoint");
     setIsLoading(true);
     try {
       const data = await SharePointService.getCargas({
@@ -54,9 +55,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         data: filterData
       });
       setCargas(data);
-      console.log("[UI] CargasScreen.fetchData - Sucesso:", data.length, "itens");
+      console.log("[UI] CargasScreen.fetchData - Sucesso:", data.length, "itens carregados");
     } catch (err: any) {
-      console.error("[UI] CargasScreen.fetchData - Erro:", err);
+      console.error("[UI] CargasScreen.fetchData - Erro ao carregar cargas:", err);
       notify("Erro ao buscar cargas: " + (err.message || "Falha na conexão"), "error");
     } finally {
       setIsLoading(false);
@@ -69,18 +70,20 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[UI] CargasScreen.handleSubmit - Enviando dados:", formData);
+    console.log("[UI] CargasScreen.handleSubmit - Processando submissão do formulário", formData);
     try {
       if (editingItem) {
+        console.log("[UI] CargasScreen.handleSubmit - Atualizando item existente ID:", editingItem.ID);
         await SharePointService.updateCarga({ ...editingItem, ...formData } as T2_Carga);
         notify("Carga atualizada com sucesso!", "success");
       } else {
-        // Garante que campos opcionais vazios sejam strings vazias
+        console.log("[UI] CargasScreen.handleSubmit - Criando nova carga simplificada");
+        // Regra de Negócio: No cadastro inicial, motorista e placas são salvos vazios
         const payload = {
           ...formData,
-          MotoristaNome: formData.MotoristaNome || '',
-          PlacaCavalo: formData.PlacaCavalo || '',
-          PlacaCarreta: formData.PlacaCarreta || '',
+          MotoristaNome: '',
+          PlacaCavalo: '',
+          PlacaCarreta: '',
         };
         await SharePointService.createCarga(payload as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
         notify("Nova carga registrada!", "success");
@@ -88,36 +91,36 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setShowModal(false);
       setEditingItem(null);
       fetchData();
-      console.log("[UI] CargasScreen.handleSubmit - Processo concluído com sucesso");
+      console.log("[UI] CargasScreen.handleSubmit - Operação finalizada com sucesso");
     } catch (err: any) {
-      console.error("[UI] CargasScreen.handleSubmit - Erro:", err);
+      console.error("[UI] CargasScreen.handleSubmit - Erro crítico na operação:", err);
       notify("Erro ao salvar carga: " + (err.message || "Erro no SharePoint"), "error");
     }
   };
 
   const handleEdit = (item: T2_Carga) => {
-    console.log("[UI] handleEdit - Carregando item para edição:", item.ID);
+    console.log("[UI] handleEdit - Abrindo edição para ID:", item.ID);
     setEditingItem(item);
     setFormData(item);
     setShowModal(true);
   };
 
   const handleDelete = async (id: number) => {
-    console.log("[UI] handleDelete - Solicitando exclusão ID:", id);
+    console.log("[UI] handleDelete - Solicitando exclusão do ID:", id);
     if (!window.confirm("Deseja realmente excluir esta carga?")) return;
     try {
       await SharePointService.deleteCarga(id);
       notify("Carga removida!", "info");
       fetchData();
-      console.log("[UI] handleDelete - Sucesso");
+      console.log("[UI] handleDelete - Item excluído com sucesso");
     } catch (err: any) {
-      console.error("[UI] handleDelete - Erro:", err);
+      console.error("[UI] handleDelete - Erro ao excluir item:", err);
       notify("Erro ao excluir: " + (err.message || "Erro no servidor"), "error");
     }
   };
 
   const openNewCargaModal = () => {
-    console.log("[UI] openNewCargaModal - Abrindo modal de criação");
+    console.log("[UI] openNewCargaModal - Configurando modal para novo registro");
     setEditingItem(null);
     setFormData({
       CargaId: generateCargaId(),
@@ -249,7 +252,12 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Carga ID (Automático)</label>
-                  <input readOnly type="text" value={formData.CargaId} className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-500 font-mono outline-none cursor-not-allowed" />
+                  <input 
+                    readOnly 
+                    type="text" 
+                    value={formData.CargaId} 
+                    className="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-500 font-mono outline-none cursor-not-allowed shadow-inner" 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Produto</label>
@@ -269,17 +277,19 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Horário</label><input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" /></div>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-200">
-                 <div className="flex justify-between items-center">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Dados do Transporte (Opcional)</label>
-                    <span className="text-[10px] text-slate-400 font-medium italic">Pode ser preenchido posteriormente</span>
-                 </div>
-                 <input placeholder="Nome do Motorista" type="text" value={formData.MotoristaNome} onChange={e => setFormData({...formData, MotoristaNome: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                 <div className="grid grid-cols-2 gap-4">
-                   <input placeholder="Placa Cavalo" type="text" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                   <input placeholder="Placa Carreta" type="text" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                 </div>
-              </div>
+              {/* Seção de Transporte Oculta no cadastro inicial de acordo com as regras rígidas */}
+              {editingItem && (
+                <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-200">
+                   <div className="flex justify-between items-center">
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Dados do Transporte</label>
+                   </div>
+                   <input placeholder="Nome do Motorista" type="text" value={formData.MotoristaNome} onChange={e => setFormData({...formData, MotoristaNome: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                   <div className="grid grid-cols-2 gap-4">
+                     <input placeholder="Placa Cavalo" type="text" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                     <input placeholder="Placa Carreta" type="text" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                   </div>
+                </div>
+              )}
 
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">Cancelar</button>
