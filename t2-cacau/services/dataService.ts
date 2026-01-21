@@ -1,6 +1,6 @@
 import { Origem, Destino, Carga, Restricao, ContatoMotorista } from '../types';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'https://t2-cacau-api.onrender.com/api';
 
 // --- Mappers: SharePoint Fields -> App Types ---
 
