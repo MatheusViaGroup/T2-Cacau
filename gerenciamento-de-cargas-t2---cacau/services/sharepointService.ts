@@ -189,16 +189,21 @@ export const SharePointService = {
   },
 
   async createCarga(carga: Omit<T2_Carga, 'ID'>): Promise<T2_Carga> {
-    console.log("[Service] createCarga - Iniciando mapeamento de payload");
+    console.log("[Service] createCarga - Iniciando mapeamento de payload rigoroso");
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
 
-    const { CargaId, ...rest } = carga;
-
+    // Enviar APENAS campos que devem estar presentes na criação
     const payload: any = {
-        Title: CargaId,      // O ID vai aqui - é o único mapeamento universal necessário para a coluna principal
-        ...rest,
-        MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
+        Title: carga.CargaId,
+        Origem: carga.Origem,        // OBRIGATÓRIO
+        Destino: carga.Destino,      // OBRIGATÓRIO
+        DataColeta: carga.DataColeta,  // OBRIGATÓRIO
+        HorarioAgendamento: carga.HorarioAgendamento, // OBRIGATÓRIO
+        Produto: carga.Produto,      // OBRIGATÓRIO
+        MotoristaTelefone: tel ? tel.TelefoneWhatsapp : (carga.MotoristaTelefone || null)
+        // NÃO enviar estes (causam erro ou não são para criação):
+        // MotoristaNome, PlacaCavalo, PlacaCarreta, StatusCavaloConfirmado, StatusSistema
     };
 
     // Limpeza de campos vazios para evitar erro 500 no SharePoint ou erros de tipo
@@ -208,7 +213,7 @@ export const SharePointService = {
         }
     });
 
-    console.log("[Service] createCarga - Payload Final consolidado (apenas Title):", JSON.stringify(payload));
+    console.log("[Service] createCarga - Payload Enviado (Rigoroso):", JSON.stringify(payload));
 
     try {
       const result = await SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
