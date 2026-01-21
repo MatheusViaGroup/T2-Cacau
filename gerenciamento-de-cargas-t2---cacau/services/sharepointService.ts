@@ -88,8 +88,8 @@ export const SharePointService = {
         NomeLocal: f.NomeLocal || f.Title,
         Motorista: f.Motorista || f.Title,
         NomeMotorista: f.NomeMotorista || f.Title,
-        // CargaId agora prioriza a nova coluna CodCarga
-        CargaId: f.CodCarga || f.Carga_Id || f.CargaId || f.Title,
+        // CargaId mapeado a partir do Title ou outras tentativas anteriores
+        CargaId: f.Title || f.CodCarga || f.Carga_Id || f.CargaId,
         ...f
       } as unknown as T;
     });
@@ -189,28 +189,35 @@ export const SharePointService = {
   },
 
   async createCarga(carga: Omit<T2_Carga, 'ID'>): Promise<T2_Carga> {
+    console.log("[Service] createCarga - Iniciando mapeamento de payload");
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
 
     const { CargaId, ...rest } = carga;
 
     const payload: any = {
-        Title: CargaId,      // Fallback padrão de visualização
-        CodCarga: CargaId,   // NOVA COLUNA LIMPA COM NOME INTERNO GARANTIDO
+        Title: CargaId,      // O ID vai aqui - é o único mapeamento universal necessário para a coluna principal
         ...rest,
         MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null
     };
 
-    // Limpeza de campos vazios para evitar erro 500 no SharePoint
+    // Limpeza de campos vazios para evitar erro 500 no SharePoint ou erros de tipo
     Object.keys(payload).forEach(key => {
         if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
             delete payload[key];
         }
     });
 
-    console.log("[DEBUG] Payload com CodCarga:", JSON.stringify(payload));
+    console.log("[Service] createCarga - Payload Final consolidado (apenas Title):", JSON.stringify(payload));
 
-    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
+    try {
+      const result = await SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
+      console.log("[Service] createCarga - Sucesso no retorno");
+      return result;
+    } catch (err: any) {
+      console.error("[Service] createCarga - Falha crítica no salvamento:", err);
+      throw err;
+    }
   },
 
   async updateCarga(carga: T2_Carga): Promise<T2_Carga> {
