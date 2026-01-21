@@ -7,11 +7,17 @@ export const LIST_IDS = {
   TELEFONES: '3d8a3361-93cb-41c3-88c3-ddc2a8ad3dc5',
 };
 
+/**
+ * MSAL Configuration
+ * Updated with Tenant ID: 7d9754b3-dcdb-4efe-8bb7-c0e5587b86ed
+ * Client ID: 3170544c-21a9-46db-97ab-c4da57a8e7bf
+ */
 export const MSAL_CONFIG = {
   auth: {
     clientId: '3170544c-21a9-46db-97ab-c4da57a8e7bf', 
-    authority: 'https://login.microsoftonline.com/common',
+    authority: 'https://login.microsoftonline.com/7d9754b3-dcdb-4efe-8bb7-c0e5587b86ed',
     redirectUri: window.location.origin,
+    navigateToLoginRequestUrl: true,
   },
   cache: {
     cacheLocation: 'sessionStorage',
