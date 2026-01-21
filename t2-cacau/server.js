@@ -10,12 +10,21 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// --- VERIFICAÇÃO DE AMBIENTE (DEBUG) ---
+console.log('--- T2 Cacau API: Environment Check ---');
+console.log('Tenant ID:', process.env.SHAREPOINT_TENANT_ID ? 'DEFINED (SHAREPOINT_ prefix)' : (process.env.MS_TENANT_ID ? 'DEFINED (MS_ prefix)' : 'MISSING'));
+console.log('Client ID:', process.env.SHAREPOINT_CLIENT_ID ? 'DEFINED (SHAREPOINT_ prefix)' : (process.env.MS_CLIENT_ID ? 'DEFINED (MS_ prefix)' : 'Using Hardcoded/Fallback'));
+console.log('Client Secret:', process.env.SHAREPOINT_CLIENT_SECRET ? 'DEFINED (SHAREPOINT_ prefix)' : (process.env.MS_CLIENT_SECRET ? 'DEFINED (MS_ prefix)' : 'Using Hardcoded/Fallback'));
+console.log('Site ID:', process.env.SHAREPOINT_SITE_ID ? 'DEFINED (SHAREPOINT_ prefix)' : (process.env.MS_SITE_ID ? 'DEFINED (MS_ prefix)' : 'MISSING'));
+console.log('---------------------------------------');
+
 // --- CONFIGURAÇÃO MICROSOFT GRAPH ---
+// Prioriza variáveis SHAREPOINT_*, fallback para MS_*, fallback para valores padrão (onde seguro)
 const MS_GRAPH_CONFIG = {
-    tenantId: process.env.MS_TENANT_ID, // Necessário configurar no .env
-    clientId: process.env.MS_CLIENT_ID || '3170544c-21a9-46db-97ab-c4da57a8e7bf',
-    clientSecret: process.env.MS_CLIENT_SECRET || '516b9f7c-dda1-41db-bfbb-f6facbdfff00', // Nota: Em prod, usar APENAS variavel de ambiente
-    siteId: process.env.MS_SITE_ID, // Necessário configurar no .env
+    tenantId: process.env.SHAREPOINT_TENANT_ID || process.env.MS_TENANT_ID,
+    clientId: process.env.SHAREPOINT_CLIENT_ID || process.env.MS_CLIENT_ID || '3170544c-21a9-46db-97ab-c4da57a8e7bf',
+    clientSecret: process.env.SHAREPOINT_CLIENT_SECRET || process.env.MS_CLIENT_SECRET || '516b9f7c-dda1-41db-bfbb-f6facbdfff00',
+    siteId: process.env.SHAREPOINT_SITE_ID || process.env.MS_SITE_ID,
     listIds: {
         origens: '29317589-132f-4bd6-8ce4-9931a403ce32',
         destinos: 'b77325a7-eee2-468c-af89-c14110c04568',
@@ -25,6 +34,13 @@ const MS_GRAPH_CONFIG = {
     }
 };
 
+// Validação Crítica na Inicialização
+if (!MS_GRAPH_CONFIG.tenantId) {
+    console.error('CRITICAL ERROR: Tenant ID not found. Set SHAREPOINT_TENANT_ID in Render environment variables.');
+    // Não encerramos o processo imediatamente para permitir que logs sejam vistos no dashboard, 
+    // mas as rotas falharão.
+}
+
 let accessToken = null;
 let tokenExpiresAt = 0;
 
@@ -33,6 +49,10 @@ async function getGraphAccessToken() {
     const now = Date.now();
     if (accessToken && now < tokenExpiresAt) {
         return accessToken;
+    }
+
+    if (!MS_GRAPH_CONFIG.tenantId) {
+        throw new Error('Tenant ID is undefined. Cannot authenticate.');
     }
 
     try {
