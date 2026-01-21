@@ -42,13 +42,17 @@ const getGraphClient = async () => {
         accessToken = response.accessToken;
         log('Auth', 'Token obtido silenciosamente.');
     } catch (error) {
-        log('Auth', 'Falha no token silencioso, tentando popup...', error);
+        log('Auth', 'Falha no token silencioso. Verificando tipo de erro...', error);
+        
         if (error instanceof InteractionRequiredAuthError) {
-            const response = await msalInstance.acquireTokenPopup(loginRequest);
-            accessToken = response.accessToken;
-            log('Auth', 'Token obtido via Popup.');
+            log('Auth', 'Token expirado ou interação necessária. Iniciando Redirect...');
+            // CRITICAL FIX: Mudado de Popup para Redirect para evitar bloqueio de Cross-Origin (COOP)
+            await msalInstance.acquireTokenRedirect(loginRequest);
+            
+            // Interrompe a execução pois a página será redirecionada
+            throw new Error("Redirecionando para renovação de token..."); 
         } else {
-            logError('Auth', 'Erro fatal na autenticação', error);
+            logError('Auth', 'Erro fatal na autenticação (não recuperável via redirect)', error);
             throw error;
         }
     }
