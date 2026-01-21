@@ -8,7 +8,9 @@ export const msalInstance = new PublicClientApplication(msalConfig);
 
 // Helper para obter cliente do Graph autenticado
 const getGraphClient = async () => {
-    // Garante que existe uma conta ativa se houver contas logadas
+    // A inicialização agora é garantida pelo App.tsx no boot.
+    // Apenas verificamos e ativamos a conta se necessário.
+    
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0 && !msalInstance.getActiveAccount()) {
         msalInstance.setActiveAccount(accounts[0]);
@@ -28,6 +30,7 @@ const getGraphClient = async () => {
         accessToken = response.accessToken;
     } catch (error) {
         if (error instanceof InteractionRequiredAuthError) {
+            // Em caso de erro silencioso, pede popup
             const response = await msalInstance.acquireTokenPopup(loginRequest);
             accessToken = response.accessToken;
         } else {
@@ -42,7 +45,7 @@ const getGraphClient = async () => {
     });
 };
 
-// Cache para o ID do Site
+// Cache para o ID do Site (para evitar buscar toda vez)
 let cachedSiteId: string | null = null;
 
 const getSiteId = async (client: Client) => {
@@ -63,6 +66,7 @@ export const DataService = {
     getListItems: async (listId: string) => {
         const client = await getGraphClient();
         const siteId = await getSiteId(client);
+        // expand=fields traz as colunas customizadas
         const response = await client.api(`/sites/${siteId}/lists/${listId}/items?expand=fields`).get();
         return response.value;
     },
@@ -91,7 +95,7 @@ export const DataService = {
             const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.origens);
             return items.map((item: any) => ({
                 id: item.id,
-                nome: item.fields.NomeLocal || item.fields.Title
+                nome: item.fields.NomeLocal || item.fields.Title // Fallback
             }));
         } catch (e) { console.error(e); return []; }
     },
@@ -125,7 +129,7 @@ export const DataService = {
             const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.cargas);
             return items.map((item: any) => ({
                 id: item.id,
-                origemId: item.fields.Origem,
+                origemId: item.fields.Origem, // Assuming store Name or ID. Ideally ID.
                 destinoId: item.fields.Destino,
                 dataColeta: item.fields.DataColeta,
                 horarioAgendamento: item.fields.HorarioAgendamento,
@@ -139,7 +143,7 @@ export const DataService = {
     },
     saveCarga: async (carga: Carga) => {
         const fields = {
-            Title: carga.id || 'Nova Carga',
+            Title: carga.id, // CargaId
             Origem: carga.origemId,
             Destino: carga.destinoId,
             DataColeta: carga.dataColeta,
@@ -151,7 +155,8 @@ export const DataService = {
             StatusCavaloConfirmado: carga.statusCavaloConfirmado
         };
         
-        // Se o ID for numérico pequeno, é ID do SharePoint. Se for vazio, cria.
+        // Verifica se é update ou create baseado se o ID é numérico (SP ID) ou timestamp (Novo Local)
+        // Como o ID do SharePoint é curto e numérico e nosso local é timestamp longo:
         if (carga.id && carga.id.length < 10) { 
              await DataService.updateItem(SHAREPOINT_CONFIG.lists.cargas, carga.id, fields);
         } else {
@@ -173,7 +178,7 @@ export const DataService = {
                 placaCarreta: item.fields.PlacaCarreta,
                 dataParou: item.fields.DataParou,
                 dataVoltou: item.fields.DataVoltou,
-                observacao: item.fields.Observa_x00e7__x00e3_o || item.fields.Observacao
+                observacao: item.fields.Observa_x00e7__x00e3_o || item.fields.Observacao // SP encodes special chars
             }));
         } catch (e) { console.error(e); return []; }
     },

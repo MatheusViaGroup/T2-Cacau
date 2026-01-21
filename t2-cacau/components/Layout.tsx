@@ -1,7 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useMsal, useAccount } from "@azure/msal-react";
-import { Truck, AlertTriangle, Settings, Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
+import { Truck, AlertTriangle, Settings, Menu, X, LayoutDashboard } from 'lucide-react';
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   return (
@@ -24,31 +23,11 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: 
 export const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const location = useLocation();
-  const { instance, accounts } = useMsal();
-  
-  // Get active account
-  const account = useAccount(accounts[0] || {});
 
   // Close mobile menu on route change
   React.useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
-
-  const handleLogout = () => {
-    instance.logoutRedirect({
-        postLogoutRedirectUri: window.location.origin
-    });
-  };
-
-  // Get User Initials
-  const getInitials = () => {
-      if (account?.name) {
-          const names = account.name.split(' ');
-          if (names.length >= 2) return `${names[0][0]}${names[1][0]}`.toUpperCase();
-          return names[0].substring(0, 2).toUpperCase();
-      }
-      return 'MS';
-  };
 
   return (
     <div className="flex h-screen w-full bg-gray-50 overflow-hidden">
@@ -85,26 +64,11 @@ export const Layout = () => {
           </nav>
 
           <div className="p-4 border-t border-gray-100">
-            <div className="mb-4 px-2">
-                <p className="text-xs text-gray-500 uppercase font-bold mb-1">Usuário</p>
-                <p className="text-sm font-medium text-gray-800 truncate" title={account?.username}>
-                    {account?.name || 'Usuário Microsoft'}
-                </p>
-            </div>
-
-            <button 
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-700 transition-colors font-medium mb-4"
-            >
-                <LogOut size={20} />
-                <span>Sair</span>
-            </button>
-
             <div className="bg-brand-50 p-4 rounded-xl">
               <p className="text-xs text-brand-600 font-semibold uppercase tracking-wider mb-1">Status do Sistema</p>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-sm text-gray-600 font-medium">Online (SharePoint)</span>
+                <span className="text-sm text-gray-600 font-medium">Operacional</span>
               </div>
             </div>
           </div>
@@ -120,8 +84,8 @@ export const Layout = () => {
                 {location.pathname === '/admin' && 'Administração'}
             </h1>
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-brand-100 border border-brand-200 flex items-center justify-center text-brand-700 text-sm font-bold" title={account?.username}>
-                    {getInitials()}
+                <div className="w-8 h-8 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-gray-500 text-sm font-medium">
+                    US
                 </div>
             </div>
         </header>

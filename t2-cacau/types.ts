@@ -24,7 +24,6 @@ export interface Carga {
   motoristaNome?: string;
   placaCavalo?: string;
   placaCarreta?: string;
-  motoristaTelefone?: string; // New V5 field
 
   // New Status Field (V4)
   statusCavaloConfirmado?: boolean;

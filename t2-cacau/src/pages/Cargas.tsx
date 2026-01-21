@@ -50,12 +50,15 @@ export const CargasPage = () => {
     }
   };
 
+  // Helper para buscar nome com fallback (já que agora usamos IDs do SharePoint que podem mudar)
   const getOrigemName = (idOrName: string) => {
+      // Tenta achar pelo ID
       const found = origens.find(o => o.id === idOrName);
       if (found) return found.nome;
+      // Se não achar, verifica se o valor salvo já é o nome (legado ou fallback)
       const foundByName = origens.find(o => o.nome === idOrName);
       if (foundByName) return foundByName.nome;
-      return idOrName;
+      return idOrName; // Retorna o próprio valor se não encontrar
   };
 
   const getDestinoName = (idOrName: string) => {
@@ -113,7 +116,7 @@ export const CargasPage = () => {
 
     setIsLoading(true);
     const payload: Carga = {
-      id: editingCarga ? editingCarga.id : '',
+      id: editingCarga ? editingCarga.id : '', // ID vazio indica criação para o DataService
       origemId: formData.origemId!,
       destinoId: formData.destinoId!,
       dataColeta: formData.dataColeta!,

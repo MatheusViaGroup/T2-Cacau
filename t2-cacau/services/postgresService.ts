@@ -1,7 +1,6 @@
 import { FrotaView } from '../types';
 
-// Dados estáticos simplificados para uso sem banco de dados (Mock)
-// Isso substitui a chamada complexa ao banco de dados PostgreSQL
+// Dados simulados da frota (anteriormente vinham do PostgreSQL)
 const FROTA_MOCK: FrotaView[] = [
   {
     CAVALO: "ABC-1234",
@@ -46,14 +45,25 @@ const FROTA_MOCK: FrotaView[] = [
      MOTORISTA: "José Santos",
      MODALIDADE: "FROTA",
      DESTINO: null
-  }
+  },
+  {
+    CAVALO: "T2-0002",
+    CARRETA: "BAU-002",
+    EVO_DESCRICAO_RESUMIDA: "DAF XF",
+    VALOR: 0,
+    PLANTA: "Planta Bahia",
+    COD_PESSOA: "MOT-05",
+    MOTORISTA: "Ana Costa",
+    MODALIDADE: "FROTA",
+    DESTINO: null
+ }
 ];
 
 // Mantivemos o nome "PostgresService" apenas para não quebrar a importação nas outras páginas,
-// mas ele agora serve apenas dados locais (Mock).
+// mas ele agora serve apenas dados locais.
 export const PostgresService = {
   getFrotaDisponivel: async (): Promise<FrotaView[]> => {
-    // Retorna os dados estáticos imediatamente (Simulando uma API rápida)
+    // Simula uma chamada assíncrona, mas retorna os dados locais imediatamente
     return Promise.resolve(FROTA_MOCK);
   }
 };

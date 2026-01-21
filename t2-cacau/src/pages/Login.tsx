@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
-import { Truck, ShieldCheck } from 'lucide-react';
+import { Truck, LogIn, ShieldCheck } from 'lucide-react';
 
 export const LoginPage = () => {
   const { instance } = useMsal();
@@ -31,7 +31,7 @@ export const LoginPage = () => {
         
         <h1 className="text-3xl font-bold text-gray-800 mb-2 tracking-tight">T2 - Cacau</h1>
         <p className="text-gray-500 mb-8 leading-relaxed">
-          Sistema de gestão logística.<br/>
+          Sistema de gestão logística e controle de frotas.<br/>
           <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mt-2 inline-block">Acesso Corporativo</span>
         </p>
         
@@ -54,7 +54,7 @@ export const LoginPage = () => {
         </div>
       </div>
       
-      <p className="mt-8 text-gray-400 text-sm relative z-10">© 2024 T2 Logistics.</p>
+      <p className="mt-8 text-gray-400 text-sm relative z-10">© 2024 T2 Logistics. Todos os direitos reservados.</p>
     </div>
   );
 };
