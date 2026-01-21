@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { T2_Carga, ProdutoType, ToastType } from '../types';
+import { T2_Carga, T2_Origem, T2_Destino, ProdutoType, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
 import { PRODUTOS } from '../constants';
 
@@ -14,21 +14,25 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T2_Carga | null>(null);
   
+  // Estados para referências de Origem e Destino
+  const [origens, setOrigens] = useState<T2_Origem[]>([]);
+  const [destinos, setDestinos] = useState<T2_Destino[]>([]);
+  const [loadingRefs, setLoadingRefs] = useState(false);
+
   const [filterMotorista, setFilterMotorista] = useState('');
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
 
+  // Função auxiliar para gerar ID automático
   const generateCargaId = () => {
-    console.log("[UI] generateCargaId - Iniciando geração de ID");
+    console.log("[UI] generateCargaId - Gerando timestamp");
     const now = new Date();
     const timestamp = now.getFullYear().toString() +
       (now.getMonth() + 1).toString().padStart(2, '0') +
       now.getDate().toString().padStart(2, '0') +
       now.getHours().toString().padStart(2, '0') +
       now.getMinutes().toString().padStart(2, '0');
-    const newId = `C${timestamp}`;
-    console.log("[UI] generateCargaId - ID gerado com sucesso:", newId);
-    return newId;
+    return `C${timestamp}`;
   };
 
   const [formData, setFormData] = useState<Partial<T2_Carga>>({
@@ -45,8 +49,30 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     StatusSistema: 'Pendente'
   });
 
+  // Efeito para carregar as listas de Origens e Destinos do SharePoint
+  useEffect(() => {
+    const loadReferences = async () => {
+      console.log("[UI] loadReferences - Buscando origens e destinos");
+      setLoadingRefs(true);
+      try {
+        const [o, d] = await Promise.all([
+          SharePointService.getOrigens(),
+          SharePointService.getDestinos()
+        ]);
+        setOrigens(o);
+        setDestinos(d);
+        console.log("[UI] loadReferences - Sucesso");
+      } catch (err) {
+        console.error("[UI] loadReferences - Erro ao carregar refs:", err);
+      } finally {
+        setLoadingRefs(false);
+      }
+    };
+    loadReferences();
+  }, []);
+
   const fetchData = useCallback(async () => {
-    console.log("[UI] CargasScreen.fetchData - Iniciando busca no SharePoint");
+    console.log("[UI] CargasScreen.fetchData - Buscando cargas");
     setIsLoading(true);
     try {
       const data = await SharePointService.getCargas({
@@ -55,10 +81,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         data: filterData
       });
       setCargas(data);
-      console.log("[UI] CargasScreen.fetchData - Sucesso:", data.length, "itens carregados");
     } catch (err: any) {
-      console.error("[UI] CargasScreen.fetchData - Erro ao carregar cargas:", err);
-      notify("Erro ao buscar cargas: " + (err.message || "Falha na conexão"), "error");
+      notify("Erro ao buscar cargas: " + (err.message || "Erro de conexão"), "error");
     } finally {
       setIsLoading(false);
     }
@@ -70,15 +94,13 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[UI] CargasScreen.handleSubmit - Processando submissão do formulário", formData);
+    console.log("[UI] CargasScreen.handleSubmit - Enviando payload:", formData);
     try {
       if (editingItem) {
-        console.log("[UI] CargasScreen.handleSubmit - Atualizando item existente ID:", editingItem.ID);
         await SharePointService.updateCarga({ ...editingItem, ...formData } as T2_Carga);
         notify("Carga atualizada com sucesso!", "success");
       } else {
-        console.log("[UI] CargasScreen.handleSubmit - Criando nova carga simplificada");
-        // Regra de Negócio: No cadastro inicial, motorista e placas são salvos vazios
+        // Injeção de valores vazios para campos de transporte conforme Regras Rígidas
         const payload = {
           ...formData,
           MotoristaNome: '',
@@ -91,36 +113,30 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setShowModal(false);
       setEditingItem(null);
       fetchData();
-      console.log("[UI] CargasScreen.handleSubmit - Operação finalizada com sucesso");
     } catch (err: any) {
-      console.error("[UI] CargasScreen.handleSubmit - Erro crítico na operação:", err);
+      console.error("[UI] CargasScreen.handleSubmit - Erro:", err);
       notify("Erro ao salvar carga: " + (err.message || "Erro no SharePoint"), "error");
     }
   };
 
   const handleEdit = (item: T2_Carga) => {
-    console.log("[UI] handleEdit - Abrindo edição para ID:", item.ID);
     setEditingItem(item);
     setFormData(item);
     setShowModal(true);
   };
 
   const handleDelete = async (id: number) => {
-    console.log("[UI] handleDelete - Solicitando exclusão do ID:", id);
     if (!window.confirm("Deseja realmente excluir esta carga?")) return;
     try {
       await SharePointService.deleteCarga(id);
       notify("Carga removida!", "info");
       fetchData();
-      console.log("[UI] handleDelete - Item excluído com sucesso");
     } catch (err: any) {
-      console.error("[UI] handleDelete - Erro ao excluir item:", err);
-      notify("Erro ao excluir: " + (err.message || "Erro no servidor"), "error");
+      notify("Erro ao excluir registro", "error");
     }
   };
 
   const openNewCargaModal = () => {
-    console.log("[UI] openNewCargaModal - Configurando modal para novo registro");
     setEditingItem(null);
     setFormData({
       CargaId: generateCargaId(),
@@ -143,7 +159,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Cargas</h2>
-          <p className="text-slate-500">Gerenciamento e monitoramento de transporte de cacau.</p>
+          <p className="text-slate-500">Gestão simplificada de logística de cacau.</p>
         </div>
         <button 
           onClick={openNewCargaModal}
@@ -248,53 +264,72 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Carga ID (Automático)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Carga ID (Bloqueado)</label>
                   <input 
                     readOnly 
+                    disabled
                     type="text" 
                     value={formData.CargaId} 
-                    className="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-500 font-mono outline-none cursor-not-allowed shadow-inner" 
+                    className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-400 font-mono shadow-inner opacity-75 cursor-not-allowed" 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Produto</label>
-                  <select value={formData.Produto} onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Produto</label>
+                  <select 
+                    value={formData.Produto} 
+                    onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} 
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                  >
                     {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Origem</label><input required type="text" value={formData.Origem} onChange={e => setFormData({...formData, Origem: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" /></div>
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Destino</label><input required type="text" value={formData.Destino} onChange={e => setFormData({...formData, Destino: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" /></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Origem</label>
+                  <select 
+                    required
+                    value={formData.Origem}
+                    onChange={e => setFormData({...formData, Origem: e.target.value})}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                  >
+                    <option value="">{loadingRefs ? 'Carregando...' : 'Selecione a Origem'}</option>
+                    {origens.map(o => <option key={o.ID} value={o.NomeLocal}>{o.NomeLocal}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Destino</label>
+                  <select 
+                    required
+                    value={formData.Destino}
+                    onChange={e => setFormData({...formData, Destino: e.target.value})}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                  >
+                    <option value="">{loadingRefs ? 'Carregando...' : 'Selecione o Destino'}</option>
+                    {destinos.map(d => <option key={d.ID} value={d.NomeLocal}>{d.NomeLocal}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data Coleta</label><input required type="date" value={formData.DataColeta} onChange={e => setFormData({...formData, DataColeta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" /></div>
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Horário</label><input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" /></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Data Coleta</label>
+                  <input required type="date" value={formData.DataColeta} onChange={e => setFormData({...formData, DataColeta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Horário Agendamento</label>
+                  <input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
+                </div>
               </div>
 
-              {/* Seção de Transporte Oculta no cadastro inicial de acordo com as regras rígidas */}
-              {editingItem && (
-                <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-200">
-                   <div className="flex justify-between items-center">
-                      <label className="block text-xs font-bold text-slate-500 uppercase">Dados do Transporte</label>
-                   </div>
-                   <input placeholder="Nome do Motorista" type="text" value={formData.MotoristaNome} onChange={e => setFormData({...formData, MotoristaNome: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                   <div className="grid grid-cols-2 gap-4">
-                     <input placeholder="Placa Cavalo" type="text" value={formData.PlacaCavalo} onChange={e => setFormData({...formData, PlacaCavalo: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                     <input placeholder="Placa Carreta" type="text" value={formData.PlacaCarreta} onChange={e => setFormData({...formData, PlacaCarreta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                   </div>
-                </div>
-              )}
-
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-amber-500 text-white py-2.5 rounded-xl font-bold shadow-md hover:bg-amber-600 transition-colors">
-                  {editingItem ? 'Atualizar Carga' : 'Salvar Registro'}
+              <div className="flex gap-4 pt-6 mt-4 border-t border-slate-100">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-amber-600 transition-colors">
+                  {editingItem ? 'Salvar Alterações' : 'Criar Registro'}
                 </button>
               </div>
             </form>
