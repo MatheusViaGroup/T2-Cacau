@@ -1,21 +1,22 @@
 import React, { useState } from 'react';
-import { useMsal } from "@azure/msal-react";
-import { loginRequest } from "../authConfig";
-import { Truck, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Truck, ShieldCheck, Database } from 'lucide-react';
 
 export const LoginPage = () => {
-  const { instance } = useMsal();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const navigate = useNavigate();
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
-    try {
-      // Usando loginRedirect para evitar bloqueios de popup (COOP)
-      await instance.loginRedirect(loginRequest);
-    } catch (e) {
-      console.error("Erro no login:", e);
-      setIsLoggingIn(false);
-    }
+    
+    // Simula delay de autenticação
+    setTimeout(() => {
+        localStorage.setItem('t2_auth_token', 'mock-token-active');
+        // Dispara evento para atualizar o App.tsx (caso necessário) ou navega direto
+        window.dispatchEvent(new Event('storage'));
+        navigate('/');
+        setIsLoggingIn(false);
+    }, 1000);
   };
 
   return (
@@ -32,7 +33,7 @@ export const LoginPage = () => {
         <h1 className="text-3xl font-bold text-gray-800 mb-2 tracking-tight">T2 - Cacau</h1>
         <p className="text-gray-500 mb-8 leading-relaxed">
           Sistema de gestão logística.<br/>
-          <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mt-2 inline-block">Acesso Corporativo</span>
+          <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mt-2 inline-block">Versão Local / Offline</span>
         </p>
         
         <button 
@@ -43,14 +44,14 @@ export const LoginPage = () => {
             {isLoggingIn ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white"></div>
             ) : (
-                <img src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.png" alt="Microsoft" className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                <Database size={20} className="group-hover:scale-110 transition-transform" />
             )}
-            <span>{isLoggingIn ? 'Redirecionando...' : 'Entrar com Microsoft'}</span>
+            <span>{isLoggingIn ? 'Acessando...' : 'Entrar no Sistema'}</span>
         </button>
 
         <div className="mt-8 flex items-center justify-center gap-2 text-xs text-gray-400">
             <ShieldCheck size={12} />
-            <span>Ambiente seguro autenticado por Azure AD</span>
+            <span>Dados armazenados localmente</span>
         </div>
       </div>
       

@@ -1,290 +1,160 @@
-import { Client } from "@microsoft/microsoft-graph-client";
-import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
-import { msalConfig, SHAREPOINT_CONFIG, loginRequest } from "../authConfig";
 import { Origem, Destino, Carga, Restricao, ContatoMotorista } from '../types';
 
-// --- LOGGING HELPER ---
-const log = (context: string, message: string, data?: any) => {
-    const time = new Date().toLocaleTimeString();
-    if (data) {
-        console.log(`%c[${time}] [${context}] ${message}`, 'color: #2563eb; font-weight: bold;', data);
-    } else {
-        console.log(`%c[${time}] [${context}] ${message}`, 'color: #2563eb; font-weight: bold;');
-    }
+// --- LOCAL STORAGE KEYS ---
+const KEYS = {
+    ORIGENS: 't2_origens',
+    DESTINOS: 't2_destinos',
+    CARGAS: 't2_cargas',
+    RESTRICOES: 't2_restricoes',
+    CONTATOS: 't2_contatos'
 };
 
-const logError = (context: string, message: string, error: any) => {
-    console.error(`%c[ERROR] [${context}] ${message}`, 'color: #dc2626; font-weight: bold;', error);
+// --- SEED DATA (Para não iniciar vazio) ---
+const SEED = {
+    ORIGENS: [
+        { id: '1', nome: 'Fazenda Santa Rita' },
+        { id: '2', nome: 'Fazenda Ouro Verde' }
+    ],
+    DESTINOS: [
+        { id: '1', nome: 'Porto de Ilhéus' },
+        { id: '2', nome: 'Fábrica Sede' }
+    ],
+    CARGAS: [],
+    RESTRICOES: [],
+    CONTATOS: []
 };
 
-// --- AUTHENTICATION SETUP ---
-export const msalInstance = new PublicClientApplication(msalConfig);
-
-const getGraphClient = async () => {
-    log('Auth', 'Iniciando obtenção do cliente Graph...');
-    
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length > 0 && !msalInstance.getActiveAccount()) {
-        msalInstance.setActiveAccount(accounts[0]);
+// --- HELPER FUNCTIONS ---
+const getStorage = <T>(key: string, seed: T[]): T[] => {
+    const data = localStorage.getItem(key);
+    if (!data) {
+        localStorage.setItem(key, JSON.stringify(seed));
+        return seed;
     }
-
-    const account = msalInstance.getActiveAccount();
-    if (!account) {
-        throw new Error("Usuário não autenticado. Faça login.");
-    }
-
-    let accessToken = "";
-    try {
-        const response = await msalInstance.acquireTokenSilent({
-            ...loginRequest,
-            account: account
-        });
-        accessToken = response.accessToken;
-        log('Auth', 'Token obtido silenciosamente.');
-    } catch (error) {
-        log('Auth', 'Falha no token silencioso. Verificando tipo de erro...', error);
-        
-        if (error instanceof InteractionRequiredAuthError) {
-            console.log("!!! USANDO REDIRECT !!!");
-            log('Auth', 'Token expirado ou interação necessária. Iniciando Redirect...');
-            
-            // CRITICAL FIX: Uso estrito de Redirect para evitar bloqueio de Cross-Origin (COOP)
-            await msalInstance.acquireTokenRedirect(loginRequest);
-            
-            // Interrompe a execução para permitir que o redirect aconteça
-            throw new Error("Redirecionando para renovação de token..."); 
-        } else {
-            logError('Auth', 'Erro fatal na autenticação (não recuperável via redirect)', error);
-            throw error;
-        }
-    }
-
-    return Client.init({
-        authProvider: (done) => {
-            done(null, accessToken);
-        }
-    });
+    return JSON.parse(data);
 };
 
-// --- SITE ID CACHE ---
-let cachedSiteId: string | null = null;
-
-const getSiteId = async (client: Client) => {
-    if (cachedSiteId) return cachedSiteId;
-    
-    try {
-        log('SharePoint', 'Buscando Site ID...', `${SHAREPOINT_CONFIG.hostname}:${SHAREPOINT_CONFIG.sitePath}`);
-        const site = await client.api(`/sites/${SHAREPOINT_CONFIG.hostname}:${SHAREPOINT_CONFIG.sitePath}`).get();
-        cachedSiteId = site.id;
-        log('SharePoint', 'Site ID encontrado:', cachedSiteId);
-        return cachedSiteId;
-    } catch (e) {
-        logError('SharePoint', 'Erro ao buscar Site ID. Verifique o Hostname e Path.', e);
-        throw e;
-    }
+const setStorage = <T>(key: string, data: T[]) => {
+    localStorage.setItem(key, JSON.stringify(data));
 };
 
-// --- DATA SERVICE IMPLEMENTATION ---
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- DATA SERVICE LOCAL IMPLEMENTATION ---
 
 export const DataService = {
     
-    // --- GENERIC HELPERS ---
-    
-    getListItems: async (listId: string) => {
-        const listName = Object.keys(SHAREPOINT_CONFIG.lists).find(key => SHAREPOINT_CONFIG.lists[key as keyof typeof SHAREPOINT_CONFIG.lists] === listId);
-        log('DataService', `Buscando itens da lista: ${listName} (${listId})`);
-        
-        try {
-            const client = await getGraphClient();
-            const siteId = await getSiteId(client);
-            // expand=fields traz todas as colunas customizadas
-            const response = await client.api(`/sites/${siteId}/lists/${listId}/items?expand=fields`).get();
-            
-            log('DataService', `Itens recebidos (${listName}):`, response.value);
-            return response.value;
-        } catch (e) {
-            logError('DataService', `Erro ao buscar lista ${listName}`, e);
-            throw e;
-        }
-    },
-
-    addItem: async (listId: string, fields: any) => {
-        log('DataService', `Adicionando item na lista ${listId}`, fields);
-        try {
-            const client = await getGraphClient();
-            const siteId = await getSiteId(client);
-            const res = await client.api(`/sites/${siteId}/lists/${listId}/items`).post({ fields });
-            log('DataService', 'Item adicionado com sucesso', res);
-            return res;
-        } catch (e) {
-            logError('DataService', 'Erro ao adicionar item', e);
-            throw e;
-        }
-    },
-
-    deleteItem: async (listId: string, itemId: string) => {
-        log('DataService', `Deletando item ${itemId} da lista ${listId}`);
-        try {
-            const client = await getGraphClient();
-            const siteId = await getSiteId(client);
-            await client.api(`/sites/${siteId}/lists/${listId}/items/${itemId}`).delete();
-            log('DataService', 'Item deletado com sucesso');
-        } catch (e) {
-            logError('DataService', 'Erro ao deletar item', e);
-            throw e;
-        }
-    },
-
-    updateItem: async (listId: string, itemId: string, fields: any) => {
-        log('DataService', `Atualizando item ${itemId} da lista ${listId}`, fields);
-        try {
-            const client = await getGraphClient();
-            const siteId = await getSiteId(client);
-            const res = await client.api(`/sites/${siteId}/lists/${listId}/items/${itemId}`).patch({ fields });
-            log('DataService', 'Item atualizado com sucesso', res);
-            return res;
-        } catch (e) {
-            logError('DataService', 'Erro ao atualizar item', e);
-            throw e;
-        }
-    },
-
-    // --- ORIGENS (Mapping: Title -> Nome, Local -> Local) ---
+    // --- ORIGENS ---
     getOrigens: async (): Promise<Origem[]> => {
-        const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.origens);
-        return items.map((item: any) => ({
-            id: item.id,
-            // Prioriza a coluna 'Local', senão usa 'Title'
-            nome: item.fields.Local || item.fields.Nome || item.fields.Title
-        }));
+        await delay(300); // Simulate network latency
+        return getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
     },
     addOrigem: async (nome: string) => {
-        // Grava em Title e Local para garantir
-        await DataService.addItem(SHAREPOINT_CONFIG.lists.origens, { Title: nome, Nome: nome, Local: nome });
+        await delay(300);
+        const list = getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
+        list.push({ id: generateId(), nome });
+        setStorage(KEYS.ORIGENS, list);
     },
     deleteOrigem: async (id: string) => {
-        await DataService.deleteItem(SHAREPOINT_CONFIG.lists.origens, id);
+        await delay(300);
+        const list = getStorage<Origem>(KEYS.ORIGENS, SEED.ORIGENS);
+        setStorage(KEYS.ORIGENS, list.filter(i => i.id !== id));
     },
 
-    // --- DESTINOS (Mapping: Title -> Nome, Local -> Local) ---
+    // --- DESTINOS ---
     getDestinos: async (): Promise<Destino[]> => {
-        const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.destinos);
-        return items.map((item: any) => ({
-            id: item.id,
-            nome: item.fields.Local || item.fields.Nome || item.fields.Title
-        }));
+        await delay(300);
+        return getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
     },
     addDestino: async (nome: string) => {
-        await DataService.addItem(SHAREPOINT_CONFIG.lists.destinos, { Title: nome, Nome: nome, Local: nome });
+        await delay(300);
+        const list = getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
+        list.push({ id: generateId(), nome });
+        setStorage(KEYS.DESTINOS, list);
     },
     deleteDestino: async (id: string) => {
-        await DataService.deleteItem(SHAREPOINT_CONFIG.lists.destinos, id);
+        await delay(300);
+        const list = getStorage<Destino>(KEYS.DESTINOS, SEED.DESTINOS);
+        setStorage(KEYS.DESTINOS, list.filter(i => i.id !== id));
     },
 
-    // --- CARGAS (Mapping Completo) ---
+    // --- CARGAS ---
     getCargas: async (): Promise<Carga[]> => {
-        const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.cargas);
-        return items.map((item: any) => ({
-            id: item.id, // ID interno do SharePoint
-            origemId: item.fields.Origem,
-            destinoId: item.fields.Destino,
-            dataColeta: item.fields.DataColeta,
-            horarioAgendamento: item.fields.HorarioAgendamento,
-            produto: item.fields.Produto,
-            motoristaNome: item.fields.MotoristaNome,
-            placaCavalo: item.fields.PlacaCavalo,
-            placaCarreta: item.fields.PlacaCarreta,
-            statusCavaloConfirmado: item.fields.StatusCavaloConfirmado
-        }));
+        await delay(500);
+        return getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
     },
     saveCarga: async (carga: Carga) => {
-        const fields = {
-            Title: carga.id || 'Nova Carga', // Coluna obrigatória SharePoint
-            CargaId: carga.id, // Coluna Custom solicitada
-            Origem: carga.origemId,
-            Destino: carga.destinoId,
-            DataColeta: carga.dataColeta,
-            HorarioAgendamento: carga.horarioAgendamento,
-            Produto: carga.produto,
-            MotoristaNome: carga.motoristaNome,
-            PlacaCavalo: carga.placaCavalo,
-            PlacaCarreta: carga.placaCarreta,
-            StatusCavaloConfirmado: carga.statusCavaloConfirmado,
-            // Campos extras solicitados no prompt que podem não estar na UI ainda
-            StatusSistema: 'Ativo' 
-        };
+        await delay(500);
+        const list = getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
         
-        if (carga.id && carga.id.length < 10) { 
-             // Se ID for curto (numérico), é update
-             await DataService.updateItem(SHAREPOINT_CONFIG.lists.cargas, carga.id, fields);
+        if (carga.id) {
+            // Update
+            const index = list.findIndex(c => c.id === carga.id);
+            if (index !== -1) {
+                list[index] = carga;
+            } else {
+                list.push(carga); // Fallback if ID exists but not found (rare)
+            }
         } else {
-             // Create
-             await DataService.addItem(SHAREPOINT_CONFIG.lists.cargas, fields);
+            // Create
+            carga.id = generateId();
+            list.push(carga);
         }
+        setStorage(KEYS.CARGAS, list);
     },
     deleteCarga: async (id: string) => {
-        await DataService.deleteItem(SHAREPOINT_CONFIG.lists.cargas, id);
+        await delay(400);
+        const list = getStorage<Carga>(KEYS.CARGAS, SEED.CARGAS);
+        setStorage(KEYS.CARGAS, list.filter(c => c.id !== id));
     },
 
-    // --- RESTRIÇÕES (Mapping: DataParou, DataVoltou, Observacao) ---
+    // --- RESTRIÇÕES ---
     getRestricoes: async (): Promise<Restricao[]> => {
-        const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.restricoes);
-        return items.map((item: any) => ({
-            id: item.id,
-            motoristaNome: item.fields.Motorista,
-            placaCavalo: item.fields.PlacaCavalo,
-            placaCarreta: item.fields.PlacaCarreta,
-            dataParou: item.fields.DataParou,
-            dataVoltou: item.fields.DataVoltou,
-            // Trata codificação especial de caracteres do SharePoint se necessário
-            observacao: item.fields.Observa_x00e7__x00e3_o || item.fields.Observacao || item.fields.Title
-        }));
+        await delay(300);
+        return getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
     },
     saveRestricao: async (restricao: Restricao) => {
-        const fields = {
-            Title: restricao.motoristaNome,
-            Motorista: restricao.motoristaNome,
-            PlacaCavalo: restricao.placaCavalo,
-            PlacaCarreta: restricao.placaCarreta,
-            DataParou: restricao.dataParou,
-            DataVoltou: restricao.dataVoltou,
-            Observacao: restricao.observacao,
-            // Tenta mapear o nome da coluna com caracteres especiais se Observacao falhar
-            Observa_x00e7__x00e3_o: restricao.observacao 
-        };
-        if (restricao.id && restricao.id.length < 10) {
-            await DataService.updateItem(SHAREPOINT_CONFIG.lists.restricoes, restricao.id, fields);
+        await delay(300);
+        const list = getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
+        
+        if (restricao.id) {
+            const index = list.findIndex(r => r.id === restricao.id);
+            if (index !== -1) list[index] = restricao;
         } else {
-            await DataService.addItem(SHAREPOINT_CONFIG.lists.restricoes, fields);
+            restricao.id = generateId();
+            list.push(restricao);
         }
+        setStorage(KEYS.RESTRICOES, list);
     },
     deleteRestricao: async (id: string) => {
-        await DataService.deleteItem(SHAREPOINT_CONFIG.lists.restricoes, id);
+        await delay(300);
+        const list = getStorage<Restricao>(KEYS.RESTRICOES, SEED.RESTRICOES);
+        setStorage(KEYS.RESTRICOES, list.filter(r => r.id !== id));
     },
 
-    // --- CONTATOS (Mapping: TelefoneWhatsapp) ---
+    // --- CONTATOS ---
     getContatos: async (): Promise<ContatoMotorista[]> => {
-        const items = await DataService.getListItems(SHAREPOINT_CONFIG.lists.telefones);
-        return items.map((item: any) => ({
-            id: item.id,
-            motoristaNome: item.fields.Motorista || item.fields.Nome || item.fields.Title,
-            telefone: item.fields.TelefoneWhatsapp
-        }));
+        await delay(300);
+        return getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
     },
     saveContato: async (contato: ContatoMotorista) => {
-        const fields = {
-            Title: contato.motoristaNome,
-            Nome: contato.motoristaNome,
-            Motorista: contato.motoristaNome,
-            TelefoneWhatsapp: contato.telefone
-        };
-        if (contato.id && contato.id.length < 10) {
-            await DataService.updateItem(SHAREPOINT_CONFIG.lists.telefones, contato.id, fields);
+        await delay(300);
+        const list = getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
+        
+        if (contato.id) {
+            const index = list.findIndex(c => c.id === contato.id);
+            if (index !== -1) list[index] = contato;
         } else {
-            await DataService.addItem(SHAREPOINT_CONFIG.lists.telefones, fields);
+            contato.id = generateId();
+            list.push(contato);
         }
+        setStorage(KEYS.CONTATOS, list);
     },
     deleteContato: async (id: string) => {
-        await DataService.deleteItem(SHAREPOINT_CONFIG.lists.telefones, id);
+        await delay(300);
+        const list = getStorage<ContatoMotorista>(KEYS.CONTATOS, SEED.CONTATOS);
+        setStorage(KEYS.CONTATOS, list.filter(c => c.id !== id));
     }
 };
