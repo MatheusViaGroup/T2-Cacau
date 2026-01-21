@@ -1,41 +1,59 @@
 import { FrotaView } from '../types';
 
-// Fallback data in case the Node.js server is not running
-const FALLBACK_DATA: FrotaView[] = [
+// Dados estáticos simplificados para uso sem banco de dados (Mock)
+// Isso substitui a chamada complexa ao banco de dados PostgreSQL
+const FROTA_MOCK: FrotaView[] = [
   {
     CAVALO: "ABC-1234",
-    CARRETA: "CAR-9876",
+    CARRETA: "CAR-1001",
     EVO_DESCRICAO_RESUMIDA: "Volvo FH 540",
-    VALOR: 50000,
+    VALOR: 0,
     PLANTA: "Planta Bahia",
-    COD_PESSOA: "MOT001",
-    MOTORISTA: "Carlos Santos (DADOS FICTÍCIOS - LIGUE O SERVIDOR)",
+    COD_PESSOA: "MOT-01",
+    MOTORISTA: "João Silva",
     MODALIDADE: "FROTA",
     DESTINO: null
+  },
+  {
+    CAVALO: "XYZ-9876",
+    CARRETA: "CAR-2002",
+    EVO_DESCRICAO_RESUMIDA: "Scania R450",
+    VALOR: 0,
+    PLANTA: "Planta Bahia",
+    COD_PESSOA: "MOT-02",
+    MOTORISTA: "Maria Oliveira",
+    MODALIDADE: "FROTA",
+    DESTINO: null
+  },
+  {
+     CAVALO: "TOP-1000",
+     CARRETA: "CAR-3000",
+     EVO_DESCRICAO_RESUMIDA: "Mercedes Actros",
+     VALOR: 0,
+     PLANTA: "Planta Bahia",
+     COD_PESSOA: "MOT-03",
+     MOTORISTA: "Carlos Pereira",
+     MODALIDADE: "AGREGADO",
+     DESTINO: null
+  },
+  {
+     CAVALO: "T2-0001",
+     CARRETA: "BAU-001",
+     EVO_DESCRICAO_RESUMIDA: "Volvo FH 460",
+     VALOR: 0,
+     PLANTA: "Planta Bahia",
+     COD_PESSOA: "MOT-04",
+     MOTORISTA: "José Santos",
+     MODALIDADE: "FROTA",
+     DESTINO: null
   }
 ];
 
+// Mantivemos o nome "PostgresService" apenas para não quebrar a importação nas outras páginas,
+// mas ele agora serve apenas dados locais (Mock).
 export const PostgresService = {
-  /**
-   * Fetches fleet data from the local Node.js BFF (Backend for Frontend).
-   * 
-   * IMPORTANT: Browsers cannot connect directly to PostgreSQL (TCP/IP).
-   * You must run 'node server.js' to act as the bridge.
-   */
   getFrotaDisponivel: async (): Promise<FrotaView[]> => {
-    try {
-      const response = await fetch('http://localhost:3001/api/frota');
-      
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      
-      const data: FrotaView[] = await response.json();
-      return data;
-    } catch (error) {
-      console.warn('Failed to connect to local BFF server (http://localhost:3001). Using fallback data.');
-      console.warn('Please ensure you are running "node server.js" in the terminal.');
-      return FALLBACK_DATA;
-    }
+    // Retorna os dados estáticos imediatamente (Simulando uma API rápida)
+    return Promise.resolve(FROTA_MOCK);
   }
 };

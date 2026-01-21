@@ -7,8 +7,12 @@ import { AdminPage } from './pages/Admin';
 import { RestricoesPage } from './pages/Restricoes';
 import { LoginPage } from './pages/Login';
 
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+}
+
 // Componente de Proteção de Rota usando MSAL
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const isAuthenticated = useIsAuthenticated();
   
   if (!isAuthenticated) {
