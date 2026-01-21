@@ -2,11 +2,11 @@
 import { LIST_IDS } from '../constants';
 
 /**
- * Note: In a real app, this service would use an authentication token from MSAL.
- * For this client-side template, we define the structure of the Graph calls.
+ * Service for interacting with Microsoft Graph API and SharePoint Lists.
+ * Uses the specific field names provided in the requirement.
  */
 
-const SITE_ID = 'root'; // Or your specific SharePoint Site ID
+const SITE_ID = 'vialacteoscombr.sharepoint.com'; // Placeholder, typically needs a real Site ID from Graph
 
 const getHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,
@@ -14,39 +14,54 @@ const getHeaders = (accessToken: string) => ({
 });
 
 export const fetchListItems = async (accessToken: string, listId: string) => {
-  // In a real environment, this fetches from Microsoft Graph
-  // const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items?expand=fields`, {
-  //   headers: getHeaders(accessToken),
-  // });
-  // return await response.json();
-  
-  // Mocking response for UI development if no real token
-  return { value: [] }; 
+  try {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items?expand=fields`, {
+      headers: getHeaders(accessToken),
+    });
+    if (!response.ok) throw new Error('Graph API Error');
+    const data = await response.json();
+    return data.value;
+  } catch (error) {
+    console.error('Error fetching from SharePoint:', error);
+    return [];
+  }
 };
 
 export const createListItem = async (accessToken: string, listId: string, fields: any) => {
-  // const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items`, {
-  //   method: 'POST',
-  //   headers: getHeaders(accessToken),
-  //   body: JSON.stringify({ fields }),
-  // });
-  // return await response.json();
-  return { id: Math.random().toString() };
+  try {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items`, {
+      method: 'POST',
+      headers: getHeaders(accessToken),
+      body: JSON.stringify({ fields }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating SharePoint item:', error);
+  }
 };
 
 export const updateListItem = async (accessToken: string, listId: string, itemId: string, fields: any) => {
-  // await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items/${itemId}/fields`, {
-  //   method: 'PATCH',
-  //   headers: getHeaders(accessToken),
-  //   body: JSON.stringify(fields),
-  // });
-  return true;
+  try {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items/${itemId}/fields`, {
+      method: 'PATCH',
+      headers: getHeaders(accessToken),
+      body: JSON.stringify(fields),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating SharePoint item:', error);
+  }
 };
 
 export const deleteListItem = async (accessToken: string, listId: string, itemId: string) => {
-  // await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items/${itemId}`, {
-  //   method: 'DELETE',
-  //   headers: getHeaders(accessToken),
-  // });
-  return true;
+  try {
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${listId}/items/${itemId}`, {
+      method: 'DELETE',
+      headers: getHeaders(accessToken),
+    });
+    return true;
+  } catch (error) {
+    console.error('Error deleting SharePoint item:', error);
+    return false;
+  }
 };

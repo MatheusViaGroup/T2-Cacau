@@ -12,27 +12,56 @@ const Cargas: React.FC = () => {
   const [editingCarga, setEditingCarga] = useState<Partial<Carga> | null>(null);
 
   useEffect(() => {
-    // Initial data load simulation
+    // Initial data load simulation with provided field names
     const mockCargas: Carga[] = [
-      { id: '1', status: 'Confirmado', product: ProductType.MANTEIGA, origin: 'Ilhéus', destination: 'Jundiaí', date: '2023-10-25', time: '08:00', driverName: 'João Silva', truckPlate: 'ABC-1234', trailerPlate: 'XYZ-9090', confirmed: true },
-      { id: '2', status: 'Pendente', product: ProductType.LICOR, origin: 'Itabuna', destination: 'São Paulo', date: '2023-10-26', time: '14:30', driverName: 'Maria Oliveira', truckPlate: 'DEF-5678', trailerPlate: 'WWW-1122', confirmed: false },
+      { 
+        id: '1', 
+        CargaId: 'CRG-001',
+        StatusSistema: 'Confirmado', 
+        Produto: ProductType.MANTEIGA, 
+        Origem: 'Ilhéus', 
+        Destino: 'Jundiaí', 
+        DataColeta: '2023-10-25', 
+        HorarioAgendamento: '08:00', 
+        MotoristaNome: 'João Silva', 
+        PlacaCavalo: 'ABC-1234', 
+        PlacaCarreta: 'XYZ-9090', 
+        MotoristaTelefone: '5573999999999',
+        StatusCavaloConfirmado: true 
+      },
+      { 
+        id: '2', 
+        CargaId: 'CRG-002',
+        StatusSistema: 'Pendente', 
+        Produto: ProductType.LICOR, 
+        Origem: 'Itabuna', 
+        Destino: 'São Paulo', 
+        DataColeta: '2023-10-26', 
+        HorarioAgendamento: '14:30', 
+        MotoristaNome: 'Maria Oliveira', 
+        PlacaCavalo: 'DEF-5678', 
+        PlacaCarreta: 'WWW-1122', 
+        MotoristaTelefone: '5573888888888',
+        StatusCavaloConfirmado: false 
+      },
     ];
     setCargas(mockCargas);
     getFleet().then(setFleet);
   }, []);
 
   const filteredCargas = cargas.filter(c => 
-    c.driverName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.product.toLowerCase().includes(searchTerm.toLowerCase())
+    c.MotoristaNome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.Produto.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.CargaId.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const openAddModal = () => {
     setEditingCarga({
-      status: 'Pendente',
-      product: ProductType.MANTEIGA,
-      date: new Date().toISOString().split('T')[0],
-      time: '08:00',
-      confirmed: false
+      StatusSistema: 'Pendente',
+      Produto: ProductType.MANTEIGA,
+      DataColeta: new Date().toISOString().split('T')[0],
+      HorarioAgendamento: '08:00',
+      StatusCavaloConfirmado: false
     });
     setIsModalOpen(true);
   };
@@ -42,9 +71,9 @@ const Cargas: React.FC = () => {
     if (selected) {
       setEditingCarga(prev => ({
         ...prev,
-        driverName: selected.MOTORISTA,
-        truckPlate: selected.CAVALO,
-        trailerPlate: selected.CARRETA
+        MotoristaNome: selected.MOTORISTA,
+        PlacaCavalo: selected.CAVALO,
+        PlacaCarreta: selected.CARRETA
       }));
     }
   };
@@ -61,7 +90,7 @@ const Cargas: React.FC = () => {
           <input
             type="text"
             className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary sm:text-sm transition-all"
-            placeholder="Filtrar por motorista ou produto..."
+            placeholder="Filtrar por motorista, carga ou produto..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -79,6 +108,7 @@ const Cargas: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-100">
             <thead className="bg-gray-50/50">
               <tr>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Carga ID</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Produto</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rota</th>
@@ -90,29 +120,32 @@ const Cargas: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-50">
               {filteredCargas.map((carga) => (
                 <tr key={carga.id} className="hover:bg-gray-50/80 transition-colors group">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Badge label={carga.status} />
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-700">
+                    {carga.CargaId}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <Badge label={carga.product} type="product" />
+                    <Badge label={carga.StatusSistema} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-gray-900">{carga.origin}</div>
+                    <Badge label={carga.Produto} type="product" />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-semibold text-gray-900">{carga.Origem}</div>
                     <div className="text-xs text-gray-400 flex items-center">
                       <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                       </svg>
-                      {carga.destination}
+                      {carga.Destino}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{new Date(carga.date).toLocaleDateString('pt-BR')}</div>
-                    <div className="text-xs text-gray-500">{carga.time}</div>
+                    <div className="text-sm text-gray-900">{new Date(carga.DataColeta).toLocaleDateString('pt-BR')}</div>
+                    <div className="text-xs text-gray-500">{carga.HorarioAgendamento}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{carga.driverName}</div>
+                    <div className="text-sm font-medium text-gray-900">{carga.MotoristaNome}</div>
                     <div className="text-xs text-gray-500 uppercase font-mono bg-gray-100 px-1 rounded inline-block">
-                      {carga.truckPlate} / {carga.trailerPlate}
+                      {carga.PlacaCavalo} / {carga.PlacaCarreta}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -141,25 +174,33 @@ const Cargas: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-6">
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Carga ID (Sistema)</label>
+                <input type="text" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="ID da Carga" value={editingCarga?.CargaId || ''} onChange={(e) => setEditingCarga(prev => ({ ...prev, CargaId: e.target.value }))} />
+              </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Origem</label>
-                <input type="text" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Ex: Ilhéus" />
+                <input type="text" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Ex: Ilhéus" value={editingCarga?.Origem || ''} onChange={(e) => setEditingCarga(prev => ({ ...prev, Origem: e.target.value }))} />
               </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Destino</label>
-                <input type="text" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Ex: Jundiaí" />
+                <input type="text" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Ex: Jundiaí" value={editingCarga?.Destino || ''} onChange={(e) => setEditingCarga(prev => ({ ...prev, Destino: e.target.value }))} />
               </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Produto</label>
-                <select className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20">
+                <select 
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={editingCarga?.Produto || ''}
+                  onChange={(e) => setEditingCarga(prev => ({ ...prev, Produto: e.target.value }))}
+                >
                   {Object.values(ProductType).map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Data e Hora</label>
                 <div className="flex gap-2">
-                  <input type="date" className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  <input type="time" className="w-24 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  <input type="date" className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" value={editingCarga?.DataColeta || ''} onChange={(e) => setEditingCarga(prev => ({ ...prev, DataColeta: e.target.value }))} />
+                  <input type="time" className="w-24 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20" value={editingCarga?.HorarioAgendamento || ''} onChange={(e) => setEditingCarga(prev => ({ ...prev, HorarioAgendamento: e.target.value }))} />
                 </div>
               </div>
               <div className="col-span-2">
@@ -167,7 +208,7 @@ const Cargas: React.FC = () => {
                 <select 
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
                   onChange={(e) => handleDriverChange(e.target.value)}
-                  value={editingCarga?.driverName || ''}
+                  value={editingCarga?.MotoristaNome || ''}
                 >
                   <option value="">Selecione um motorista da frota...</option>
                   {fleet.map(f => <option key={f.MOTORISTA} value={f.MOTORISTA}>{f.MOTORISTA}</option>)}
@@ -175,19 +216,19 @@ const Cargas: React.FC = () => {
               </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Placa Cavalinho</label>
-                <input type="text" readOnly className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-mono" value={editingCarga?.truckPlate || ''} />
+                <input type="text" readOnly className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-mono" value={editingCarga?.PlacaCavalo || ''} />
               </div>
               <div className="col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Placa Carreta</label>
-                <input type="text" readOnly className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-mono" value={editingCarga?.trailerPlate || ''} />
+                <input type="text" readOnly className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-mono" value={editingCarga?.PlacaCarreta || ''} />
               </div>
               <div className="col-span-2 flex items-center gap-3 bg-gray-50 p-4 rounded-2xl">
                 <input 
                   type="checkbox" 
                   id="confirmCheck" 
                   className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
-                  checked={editingCarga?.confirmed || false}
-                  onChange={(e) => setEditingCarga(prev => ({ ...prev, confirmed: e.target.checked, status: e.target.checked ? 'Confirmado' : 'Pendente' }))}
+                  checked={editingCarga?.StatusCavaloConfirmado || false}
+                  onChange={(e) => setEditingCarga(prev => ({ ...prev, StatusCavaloConfirmado: e.target.checked, StatusSistema: e.target.checked ? 'Confirmado' : 'Pendente' }))}
                 />
                 <label htmlFor="confirmCheck" className="text-sm font-semibold text-gray-700">Cavalo Confirmado pelo Motorista</label>
               </div>

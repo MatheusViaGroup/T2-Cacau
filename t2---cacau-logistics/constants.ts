@@ -9,7 +9,7 @@ export const LIST_IDS = {
 
 export const MSAL_CONFIG = {
   auth: {
-    clientId: 'YOUR_CLIENT_ID_PLACEHOLDER', // Replace with real Client ID from Azure Portal
+    clientId: '3170544c-21a9-46db-97ab-c4da57a8e7bf', 
     authority: 'https://login.microsoftonline.com/common',
     redirectUri: window.location.origin,
   },

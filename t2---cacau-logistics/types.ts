@@ -14,30 +14,36 @@ export interface Driver {
 
 export interface Carga {
   id: string;
-  status: 'Pendente' | 'Confirmado';
-  product: ProductType;
-  origin: string;
-  destination: string;
-  date: string;
-  time: string;
-  driverName: string;
-  truckPlate: string;
-  trailerPlate: string;
-  confirmed: boolean;
+  CargaId: string;
+  Origem: string;
+  Destino: string;
+  DataColeta: string;
+  HorarioAgendamento: string;
+  Produto: string;
+  MotoristaNome: string;
+  PlacaCavalo: string;
+  PlacaCarreta: string;
+  MotoristaTelefone: string;
+  StatusCavaloConfirmado: boolean;
+  StatusSistema: string;
 }
 
 export interface Restricao {
   id: string;
-  driverName: string;
-  startDate: string;
-  endDate: string;
-  observation: string;
+  Motorista: string;
+  PlacaCavalo: string;
+  PlacaCarreta: string;
+  DataParou: string;
+  DataVoltou: string;
+  Observação: string;
 }
 
 export interface AdminListItem {
   id: string;
-  title: string;
-  metadata?: string; // e.g., WhatsApp number for contacts
+  Title?: string;
+  NomeLocal?: string;
+  NomeMotorista?: string;
+  TelefoneWhatsapp?: string;
 }
 
 export interface SharePointFields {
