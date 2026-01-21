@@ -45,11 +45,13 @@ const getGraphClient = async () => {
         log('Auth', 'Falha no token silencioso. Verificando tipo de erro...', error);
         
         if (error instanceof InteractionRequiredAuthError) {
+            console.log("!!! USANDO REDIRECT !!!");
             log('Auth', 'Token expirado ou interação necessária. Iniciando Redirect...');
-            // CRITICAL FIX: Mudado de Popup para Redirect para evitar bloqueio de Cross-Origin (COOP)
+            
+            // CRITICAL FIX: Uso estrito de Redirect para evitar bloqueio de Cross-Origin (COOP)
             await msalInstance.acquireTokenRedirect(loginRequest);
             
-            // Interrompe a execução pois a página será redirecionada
+            // Interrompe a execução para permitir que o redirect aconteça
             throw new Error("Redirecionando para renovação de token..."); 
         } else {
             logError('Auth', 'Erro fatal na autenticação (não recuperável via redirect)', error);

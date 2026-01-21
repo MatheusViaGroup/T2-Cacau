@@ -4,36 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>T2 - Cacau</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              brand: {
-                50: '#fdf8f6',
-                100: '#f2e8e5',
-                200: '#eaddd7',
-                300: '#e0cec7',
-                400: '#d2bab0',
-                500: '#a18072', // Cocoa-ish primary
-                600: '#8a6a5c',
-                700: '#735448',
-                800: '#5e4238',
-                900: '#4a332a',
-              }
-            }
-          }
-        }
-      }
-    </script>
-    <style>
-      body {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background-color: #f3f4f6;
-      }
-    </style>
-  <script type="importmap">
+    <!-- Tailwind CSS CDN removido em favor da build local para evitar erros de produção -->
+    <script type="importmap">
 {
   "imports": {
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
@@ -43,7 +15,9 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "@azure/msal-browser": "https://esm.sh/@azure/msal-browser@^5.0.2",
     "@microsoft/microsoft-graph-client": "https://esm.sh/@microsoft/microsoft-graph-client@^3.0.7",
-    "@azure/msal-react": "https://esm.sh/@azure/msal-react@^5.0.2"
+    "@azure/msal-react": "https://esm.sh/@azure/msal-react@^5.0.2",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>

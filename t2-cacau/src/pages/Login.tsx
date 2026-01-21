@@ -10,7 +10,7 @@ export const LoginPage = () => {
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      // Alterado de loginPopup para loginRedirect para evitar bloqueios de Cross-Origin
+      // Usando loginRedirect para evitar bloqueios de popup (COOP)
       await instance.loginRedirect(loginRequest);
     } catch (e) {
       console.error("Erro no login:", e);
