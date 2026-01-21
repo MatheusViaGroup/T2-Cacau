@@ -37,6 +37,34 @@ export const SharePointService = {
     return cachedSiteId!;
   },
 
+  async debugListColumns(): Promise<void> {
+    console.log("🔍 [Service] debugListColumns - Iniciando Debug de Colunas...");
+    try {
+      const listId = SHAREPOINT_CONFIG.LISTS.CARGAS.id;
+      const siteId = await this.getSiteId();
+      const token = await AuthService.getToken();
+      
+      const response = await fetch(`${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/columns`, {
+          headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!response.ok) {
+          console.error("[Service] Erro ao ler colunas:", await response.text());
+          return;
+      }
+
+      const data = await response.json();
+      console.log("📊 [Service] Resultado das Colunas (InternalName é o que importa para a API):");
+      console.table(data.value.map((col: any) => ({
+          DisplayName: col.displayName,
+          InternalName: col.name, // <--- ESTE É O NOME QUE PRECISAMOS
+          Type: col.text ? 'Text' : (col.number ? 'Number' : (col.dateTime ? 'DateTime' : 'Outro'))
+      })));
+    } catch (err) {
+      console.error("[Service] debugListColumns - Erro crítico:", err);
+    }
+  },
+
   async getItems<T>(listId: string): Promise<T[]> {
     console.log(`[Service] getItems - List: ${listId}`);
     const siteId = await SharePointService.getSiteId();

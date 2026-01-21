@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Screen, ToastMessage, ToastType } from './types';
 import { AuthService } from './services/authService';
+import { SharePointService } from './services/sharepointService';
 import CargasScreen from './components/CargasScreen';
 import RestricoesScreen from './components/RestricoesScreen';
 import AdminScreen from './components/AdminScreen';
@@ -79,6 +80,11 @@ const App: React.FC = () => {
     showToast("Sessão encerrada", "info");
   };
 
+  const handleDebug = async () => {
+    showToast("🔍 Iniciando diagnóstico de colunas... Veja o console.", "info");
+    await SharePointService.debugListColumns();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -137,7 +143,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <nav className="flex bg-slate-800 p-1 rounded-xl">
+          <nav className="flex bg-slate-800 p-1 rounded-xl items-center">
             <button 
               onClick={() => setActiveScreen(Screen.CARGAS)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeScreen === Screen.CARGAS ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
@@ -156,9 +162,20 @@ const App: React.FC = () => {
             >
               Admin
             </button>
+            
+            <div className="h-6 w-[1px] bg-slate-700 mx-2"></div>
+
+            <button 
+              onClick={handleDebug}
+              className="px-3 py-2 rounded-lg text-[10px] font-bold text-slate-400 hover:text-amber-400 transition-all uppercase tracking-tighter"
+              title="Debug Colunas SharePoint"
+            >
+              Debug
+            </button>
+
             <button 
               onClick={handleLogout}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 transition-all ml-2"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 transition-all ml-1"
               title="Sair"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
