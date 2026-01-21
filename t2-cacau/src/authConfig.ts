@@ -4,8 +4,8 @@ import { Configuration, PopupRequest } from "@azure/msal-browser";
 export const msalConfig: Configuration = {
     auth: {
         clientId: "3170544c-21a9-46db-97ab-c4da57a8e7bf",
-        // Atualizado para o Tenant ID fornecido
-        authority: "https://login.microsoftonline.com/516b9f7c-dda1-41db-bfbb-f6facbdfff00",
+        // Atualizado para o Tenant ID correto da assinatura ativa (7d97...)
+        authority: "https://login.microsoftonline.com/7d9754b3-dcdb-4efe-8bb7-c0e5587b86ed",
         redirectUri: window.location.origin,
     },
     cache: {
