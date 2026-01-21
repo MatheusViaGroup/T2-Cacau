@@ -52,7 +52,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
       await fetchAdminData();
       notify("Origem salva com sucesso!", "success");
     } catch (err: any) {
-      notify("Erro ao salvar origem: " + (err.message || "Erro desconhecido"), "error");
+      notify("Erro ao salvar origem: " + (err.message || "Verifique o nome da coluna no SharePoint"), "error");
     } finally {
       setIsActionLoading(null);
     }
@@ -70,7 +70,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
       await fetchAdminData();
       notify("Destino salvo com sucesso!", "success");
     } catch (err: any) {
-      notify("Erro ao salvar destino: " + (err.message || "Erro desconhecido"), "error");
+      notify("Erro ao salvar destino: " + (err.message || "Erro de permissão ou coluna"), "error");
     } finally {
       setIsActionLoading(null);
     }
