@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { T2_Origem, T2_Destino, T2_Telefone, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
+import { n8nService, FrotaMotorista } from '../services/n8nService';
 
 interface AdminProps {
   notify: (msg: string, type: ToastType) => void;
@@ -11,6 +11,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
   const [origens, setOrigens] = useState<T2_Origem[]>([]);
   const [destinos, setDestinos] = useState<T2_Destino[]>([]);
   const [telefones, setTelefones] = useState<T2_Telefone[]>([]);
+  const [motoristasDisponiveis, setMotoristasDisponiveis] = useState<FrotaMotorista[]>([]);
   const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
   
   const [newOrigem, setNewOrigem] = useState('');
@@ -39,6 +40,19 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
   useEffect(() => {
     fetchAdminData();
   }, [fetchAdminData]);
+
+  useEffect(() => {
+    const loadMotoristasN8n = async () => {
+      console.log("[AdminScreen] Carregando motoristas do n8n para a agenda");
+      try {
+        const data = await n8nService.getFrotaMotoristas();
+        setMotoristasDisponiveis(data);
+      } catch (err) {
+        console.error("[AdminScreen] Erro ao carregar motoristas do n8n:", err);
+      }
+    };
+    loadMotoristasN8n();
+  }, []);
 
   const handleAddOrigem = async () => {
     if (!newOrigem) {
@@ -115,13 +129,18 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
               Vincular Telefone
             </h3>
             <div className="space-y-3">
-              <input 
-                type="text" 
-                placeholder="Nome do Motorista" 
-                value={phoneMotorista} 
-                onChange={e => setPhoneMotorista(e.target.value)}
+              <select 
+                value={phoneMotorista}
+                onChange={(e) => setPhoneMotorista(e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
-              />
+              >
+                <option value="">Selecione o motorista...</option>
+                {motoristasDisponiveis.map((m, idx) => (
+                  <option key={idx} value={m.MOTORISTA}>
+                    {m.MOTORISTA} - {m.CAVALO}
+                  </option>
+                ))}
+              </select>
               <input 
                 type="text" 
                 placeholder="WhatsApp (Ex: 5511999999999)" 
@@ -227,6 +246,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
               <div key={d.ID} className="flex justify-between items-center p-2 hover:bg-slate-50 rounded-lg text-sm group transition-colors">
                 <span>{d.NomeLocal}</span>
                 <button 
+                  /* Fixed: Use d.ID instead of non-existent o.ID */
                   onClick={() => d.ID && SharePointService.deleteDestino(d.ID).then(() => { notify("Destino removido", "info"); fetchAdminData(); }).catch(e => notify("Erro ao excluir", "error"))}
                   className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
