@@ -18,12 +18,7 @@ const ProtectedRoute = ({ children }: PropsWithChildren) => {
 
 const LoginRoute = () => {
     const isAuthenticated = useIsAuthenticated();
-    const { instance } = useMsal();
     
-    useEffect(() => {
-        instance.handleRedirectPromise().catch(error => console.error(error));
-    }, [instance]);
-
     if (isAuthenticated) {
         return <Navigate to="/" replace />;
     }
@@ -40,6 +35,8 @@ const App = () => {
         // Verifica se já não está inicializado (para evitar double-init em hot reload)
         if (!msalInstance.getActiveAccount() && !document.getElementById("msal-initialized")) {
              await msalInstance.initialize();
+             // CRÍTICO: Processa o hash de redirecionamento caso o usuário esteja voltando do login
+             await msalInstance.handleRedirectPromise();
         }
         setIsMsalInitialized(true);
       } catch (error) {

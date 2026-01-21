@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
-import { Truck, LogIn, ShieldCheck } from 'lucide-react';
+import { Truck, ShieldCheck } from 'lucide-react';
 
 export const LoginPage = () => {
   const { instance } = useMsal();
@@ -10,10 +10,10 @@ export const LoginPage = () => {
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      await instance.loginPopup(loginRequest);
+      // Alterado de loginPopup para loginRedirect para evitar bloqueios de Cross-Origin
+      await instance.loginRedirect(loginRequest);
     } catch (e) {
       console.error("Erro no login:", e);
-    } finally {
       setIsLoggingIn(false);
     }
   };
@@ -31,7 +31,7 @@ export const LoginPage = () => {
         
         <h1 className="text-3xl font-bold text-gray-800 mb-2 tracking-tight">T2 - Cacau</h1>
         <p className="text-gray-500 mb-8 leading-relaxed">
-          Sistema de gestão logística e controle de frotas.<br/>
+          Sistema de gestão logística.<br/>
           <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mt-2 inline-block">Acesso Corporativo</span>
         </p>
         
@@ -45,7 +45,7 @@ export const LoginPage = () => {
             ) : (
                 <img src="https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.png" alt="Microsoft" className="w-5 h-5 group-hover:scale-110 transition-transform" />
             )}
-            <span>{isLoggingIn ? 'Conectando...' : 'Entrar com Microsoft'}</span>
+            <span>{isLoggingIn ? 'Redirecionando...' : 'Entrar com Microsoft'}</span>
         </button>
 
         <div className="mt-8 flex items-center justify-center gap-2 text-xs text-gray-400">
@@ -54,7 +54,7 @@ export const LoginPage = () => {
         </div>
       </div>
       
-      <p className="mt-8 text-gray-400 text-sm relative z-10">© 2024 T2 Logistics. Todos os direitos reservados.</p>
+      <p className="mt-8 text-gray-400 text-sm relative z-10">© 2024 T2 Logistics.</p>
     </div>
   );
 };
