@@ -88,6 +88,8 @@ export const SharePointService = {
         NomeLocal: f.NomeLocal || f.Title,
         Motorista: f.Motorista || f.Title,
         NomeMotorista: f.NomeMotorista || f.Title,
+        // Mapeamento defensivo para leitura do campo de observação sem acento vindo do SharePoint
+        Observação: f.Observacao || f.Observação,
         // CargaId mapeado a partir do Title ou outras tentativas anteriores
         CargaId: f.Title || f.CodCarga || f.Carga_Id || f.CargaId,
         ...f
@@ -263,11 +265,28 @@ export const SharePointService = {
   },
 
   async createRestricao(item: Omit<T2_Restricao, 'ID'>): Promise<T2_Restricao> {
-    const fields = {
+    console.log("[Service] createRestricao - Dados recebidos:", item);
+    
+    const payload = {
       Title: item.Motorista,
-      ...item
+      Motorista: item.Motorista,
+      PlacaCavalo: item.PlacaCavalo,
+      PlacaCarreta: item.PlacaCarreta,
+      DataParou: item.DataParou,
+      DataVoltou: item.DataVoltou,
+      Observacao: item.Observação // Mapeamento para o nome interno sem acento
     };
-    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, fields);
+
+    console.log("[Service] createRestricao - Payload mapeado para envio:", payload);
+
+    try {
+      const result = await SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, payload);
+      console.log("[Service] createRestricao - Sucesso ao criar restrição:", result);
+      return result;
+    } catch (err: any) {
+      console.error("[Service] createRestricao - Erro ao criar restrição:", err);
+      throw err;
+    }
   },
 
   async deleteRestricao(id: number): Promise<void> {
@@ -275,8 +294,29 @@ export const SharePointService = {
   },
 
   async updateRestricao(item: T2_Restricao): Promise<any> {
-    const { ID, ...fields } = item;
-    return SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, ID!, fields);
+    console.log("[Service] updateRestricao - Dados recebidos para atualização:", item);
+    
+    const { ID } = item;
+    const payload = {
+      Title: item.Motorista,
+      Motorista: item.Motorista,
+      PlacaCavalo: item.PlacaCavalo,
+      PlacaCarreta: item.PlacaCarreta,
+      DataParou: item.DataParou,
+      DataVoltou: item.DataVoltou,
+      Observacao: item.Observação // Mapeamento para o nome interno sem acento
+    };
+
+    console.log("[Service] updateRestricao - Payload mapeado para envio:", payload);
+
+    try {
+      const result = await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, ID!, payload);
+      console.log("[Service] updateRestricao - Sucesso ao atualizar restrição:", result);
+      return result;
+    } catch (err: any) {
+      console.error("[Service] updateRestricao - Erro ao atualizar restrição:", err);
+      throw err;
+    }
   },
 
   async getOrigens(): Promise<T2_Origem[]> {
