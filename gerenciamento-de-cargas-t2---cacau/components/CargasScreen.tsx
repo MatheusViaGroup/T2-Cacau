@@ -34,7 +34,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     "Conectando ao servidor de IA...",
     "Buscando motoristas disponíveis no PostgreSQL...",
     "Analisando restrições de agenda...",
-    "IA calculando a melhor distribuição de cargas...",
+    "IA calculando a melhor distribution de cargas...",
     "Validando compatibilidade de veículos...",
     "IA finalizando as atribuições...",
     "Aguardando persistência no SharePoint..."
@@ -190,8 +190,41 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         notify("Carga atualizada!", "success");
       } else {
         const payload = { ...formData, MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '' };
+        
+        // Verificar se é produto Raw
+        const isRawProduct = formData.Produto?.includes('Raw');
+        
+        console.log('[CargasScreen] handleSubmit - Produto:', formData.Produto);
+        console.log('[CargasScreen] handleSubmit - É produto Raw?', isRawProduct);
+        
+        // Criar primeira carga
         await SharePointService.createCarga(payload as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
-        notify("Nova carga registrada!", "success");
+        
+        // Se for Raw, criar segunda carga com rota invertida
+        if (isRawProduct) {
+          console.log('[CargasScreen] handleSubmit - Criando rota de retorno para produto Raw');
+          
+          // Calcular horário de retorno (+2 horas)
+          const [hours, minutes] = (formData.HorarioAgendamento || "00:00").split(':').map(Number);
+          const returnHours = ((hours + 2) % 24).toString().padStart(2, '0');
+          const returnTime = `${returnHours}:${(minutes || 0).toString().padStart(2, '0')}`;
+          
+          const payloadRetorno = {
+            ...payload,
+            CargaId: generateCargaId() + '-R',
+            Origem: formData.Destino,  // INVERTIDO
+            Destino: formData.Origem,  // INVERTIDO
+            HorarioAgendamento: returnTime
+          };
+          
+          console.log('[CargasScreen] handleSubmit - Dados da carga de retorno:', payloadRetorno);
+          
+          await SharePointService.createCarga(payloadRetorno as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
+          
+          notify('Carga registrada com rota de retorno!', 'success');
+        } else {
+          notify('Nova carga registrada!', 'success');
+        }
       }
       setShowModal(false);
       setEditingItem(null);
