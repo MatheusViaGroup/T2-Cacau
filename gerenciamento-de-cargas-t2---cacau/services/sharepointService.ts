@@ -14,18 +14,10 @@ const SITE_PATH = 'vialacteoscombr.sharepoint.com:/sites/Powerapps';
 
 let cachedSiteId: string | null = null;
 
-/**
- * REGRAS DE MAPEAMENTO SHAREPOINT (IMPORTANTE):
- * No SharePoint, mesmo que você mude o rótulo da coluna "Title" para "NomeLocal" na interface,
- * o nome INTERNO para a API continua sendo "Title".
- * Enviar nomes de colunas que não existem internamente causa erro 400 Bad Request.
- */
-
 export const SharePointService = {
   
   async getSiteId(): Promise<string> {
     if (cachedSiteId) return cachedSiteId;
-    console.log("[Service] getSiteId - Início");
     const token = await AuthService.getToken();
     const response = await fetch(`${GRAPH_BASE_URL}/sites/${SITE_PATH}`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -33,12 +25,10 @@ export const SharePointService = {
     if (!response.ok) throw new Error("Falha ao obter Site ID");
     const data = await response.json();
     cachedSiteId = data.id;
-    console.log("[Service] getSiteId - Sucesso:", cachedSiteId);
     return cachedSiteId!;
   },
 
   async debugListColumns(): Promise<void> {
-    console.log("🔍 [Service] debugListColumns - Iniciando Debug de Colunas...");
     try {
       const listId = SHAREPOINT_CONFIG.LISTS.CARGAS.id;
       const siteId = await this.getSiteId();
@@ -48,29 +38,26 @@ export const SharePointService = {
           headers: { Authorization: `Bearer ${token}` }
       });
       
-      if (!response.ok) {
-          console.error("[Service] Erro ao ler colunas:", await response.text());
-          return;
-      }
-
+      if (!response.ok) return;
       const data = await response.json();
-      console.log("📊 [Service] Resultado das Colunas (InternalName é o que importa para a API):");
       console.table(data.value.map((col: any) => ({
           DisplayName: col.displayName,
           InternalName: col.name, 
           Type: col.text ? 'Text' : (col.number ? 'Number' : (col.dateTime ? 'DateTime' : 'Outro'))
       })));
-    } catch (err) {
-      console.error("[Service] debugListColumns - Erro crítico:", err);
-    }
+    } catch (err) {}
   },
 
   async getItems<T>(listId: string): Promise<T[]> {
-    console.log(`[Service] getItems - List: ${listId}`);
     const siteId = await SharePointService.getSiteId();
     const token = await AuthService.getToken();
     
-    const response = await fetch(`${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/items?expand=fields`, {
+    // Adicionamos um timestamp (cb) para evitar que o navegador use dados em cache
+    const cacheBuster = `cb=${Date.now()}`;
+    const url = `${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/items?expand=fields&${cacheBuster}`;
+    
+    console.log(`[SharePoint] Buscando dados novos: ${listId}`);
+    const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -80,31 +67,23 @@ export const SharePointService = {
     }
     
     const data = await response.json();
-    
-    const items = data.value.map((item: any) => {
+    return data.value.map((item: any) => {
       const f = item.fields;
       return {
         ID: f.id,
         NomeLocal: f.NomeLocal || f.Title,
         Motorista: f.Motorista || f.Title,
         NomeMotorista: f.NomeMotorista || f.Title,
-        // Mapeamento defensivo para leitura do campo de observação sem acento vindo do SharePoint
         Observação: f.Observacao || f.Observação,
-        // CargaId mapeado a partir do Title ou outras tentativas anteriores
         CargaId: f.Title || f.CodCarga || f.Carga_Id || f.CargaId,
         ...f
       } as unknown as T;
     });
-
-    console.log(`[Service] getItems - Sucesso: ${items.length} itens encontrados`);
-    return items;
   },
 
   async createItem(listId: string, fields: any): Promise<any> {
-    console.log(`[Service] createItem - List: ${listId}, Payload:`, fields);
     const siteId = await SharePointService.getSiteId();
     const token = await AuthService.getToken();
-
     const response = await fetch(`${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/items`, {
       method: 'POST',
       headers: { 
@@ -113,25 +92,14 @@ export const SharePointService = {
       },
       body: JSON.stringify({ fields })
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Service] createItem - Erro Detalhado:", errorData);
-      
-      const msg = errorData.error?.message || "Erro desconhecido";
-      throw new Error(`Erro na Lista SharePoint: ${msg}`);
-    }
-
+    if (!response.ok) throw new Error("Erro ao criar item");
     const data = await response.json();
-    console.log("[Service] createItem - Sucesso");
     return { ID: data.fields.id, ...data.fields };
   },
 
   async updateItem(listId: string, itemId: number, fields: any): Promise<any> {
-    console.log(`[Service] updateItem - List: ${listId}, ID: ${itemId}`);
     const siteId = await SharePointService.getSiteId();
     const token = await AuthService.getToken();
-    
     const response = await fetch(`${GRAPH_BASE_URL}/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
       method: 'PATCH',
       headers: { 
@@ -140,12 +108,7 @@ export const SharePointService = {
       },
       body: JSON.stringify(fields)
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Erro ao atualizar: ${errorData.error?.message}`);
-    }
-
+    if (!response.ok) throw new Error("Erro ao atualizar");
     return await response.json();
   },
 
@@ -159,8 +122,6 @@ export const SharePointService = {
     if (!response.ok) throw new Error("Falha ao deletar item");
   },
 
-  // --- MÉTODOS ESPECIALIZADOS ---
-
   async getTelefones(): Promise<T2_Telefone[]> {
     return SharePointService.getItems<T2_Telefone>(SHAREPOINT_CONFIG.LISTS.TELEFONES.id);
   },
@@ -168,12 +129,7 @@ export const SharePointService = {
   async saveOrUpdateTelefone(telefone: T2_Telefone): Promise<T2_Telefone> {
     const telefones = await this.getTelefones();
     const existing = telefones.find(t => t.NomeMotorista?.toLowerCase() === telefone.NomeMotorista.toLowerCase());
-    
-    const fields = {
-      Title: telefone.NomeMotorista,
-      TelefoneWhatsapp: telefone.TelefoneWhatsapp
-    };
-
+    const fields = { Title: telefone.NomeMotorista, TelefoneWhatsapp: telefone.TelefoneWhatsapp };
     if (existing && existing.ID) {
       return SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.TELEFONES.id, existing.ID, fields);
     }
@@ -191,40 +147,21 @@ export const SharePointService = {
   },
 
   async createCarga(carga: Omit<T2_Carga, 'ID'>): Promise<T2_Carga> {
-    console.log("[Service] createCarga - Iniciando mapeamento de payload rigoroso");
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
-
-    // Enviar APENAS campos que devem estar presentes na criação
     const payload: any = {
         Title: carga.CargaId,
-        Origem: carga.Origem,        // OBRIGATÓRIO
-        Destino: carga.Destino,      // OBRIGATÓRIO
-        DataColeta: carga.DataColeta,  // OBRIGATÓRIO
-        HorarioAgendamento: carga.HorarioAgendamento, // OBRIGATÓRIO
-        Produto: carga.Produto,      // OBRIGATÓRIO
+        Origem: carga.Origem,
+        Destino: carga.Destino,
+        DataColeta: carga.DataColeta,
+        HorarioAgendamento: carga.HorarioAgendamento,
+        Produto: carga.Produto,
         MotoristaTelefone: tel ? tel.TelefoneWhatsapp : (carga.MotoristaTelefone || null)
-        // NÃO enviar estes (causam erro ou não são para criação):
-        // MotoristaNome, PlacaCavalo, PlacaCarreta, StatusCavaloConfirmado, StatusSistema
     };
-
-    // Limpeza de campos vazios para evitar erro 500 no SharePoint ou erros de tipo
     Object.keys(payload).forEach(key => {
-        if (payload[key] === "" || payload[key] === null || payload[key] === undefined) {
-            delete payload[key];
-        }
+        if (payload[key] === "" || payload[key] === null || payload[key] === undefined) delete payload[key];
     });
-
-    console.log("[Service] createCarga - Payload Enviado (Rigoroso):", JSON.stringify(payload));
-
-    try {
-      const result = await SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
-      console.log("[Service] createCarga - Sucesso no retorno");
-      return result;
-    } catch (err: any) {
-      console.error("[Service] createCarga - Falha crítica no salvamento:", err);
-      throw err;
-    }
+    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, payload);
   },
 
   async updateCarga(carga: T2_Carga): Promise<T2_Carga> {
@@ -233,12 +170,8 @@ export const SharePointService = {
   },
 
   async updateCargaComMotorista(id: number, data: { motorista: string, cavalo: string, carreta: string }): Promise<void> {
-    console.log(`[Service] updateCargaComMotorista - ID: ${id}, Motorista: ${data.motorista}`);
-    
-    // Busca telefone automaticamente se houver vínculo
     const telefones = await this.getTelefones();
     const tel = telefones.find(t => t.NomeMotorista?.toLowerCase() === data.motorista.toLowerCase());
-
     const fields = {
       MotoristaNome: data.motorista,
       PlacaCavalo: data.cavalo,
@@ -246,14 +179,7 @@ export const SharePointService = {
       MotoristaTelefone: tel ? tel.TelefoneWhatsapp : null,
       StatusCavaloConfirmado: true
     };
-
-    try {
-      await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, id, fields);
-      console.log("[Service] updateCargaComMotorista - Sucesso");
-    } catch (error) {
-      console.error("[Service] updateCargaComMotorista - Erro:", error);
-      throw error;
-    }
+    await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, id, fields);
   },
 
   async deleteCarga(id: number): Promise<void> {
@@ -265,8 +191,6 @@ export const SharePointService = {
   },
 
   async createRestricao(item: Omit<T2_Restricao, 'ID'>): Promise<T2_Restricao> {
-    console.log("[Service] createRestricao - Dados recebidos:", item);
-    
     const payload = {
       Title: item.Motorista,
       Motorista: item.Motorista,
@@ -274,19 +198,9 @@ export const SharePointService = {
       PlacaCarreta: item.PlacaCarreta,
       DataParou: item.DataParou,
       DataVoltou: item.DataVoltou,
-      Observacao: item.Observação // Mapeamento para o nome interno sem acento
+      Observacao: item.Observação
     };
-
-    console.log("[Service] createRestricao - Payload mapeado para envio:", payload);
-
-    try {
-      const result = await SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, payload);
-      console.log("[Service] createRestricao - Sucesso ao criar restrição:", result);
-      return result;
-    } catch (err: any) {
-      console.error("[Service] createRestricao - Erro ao criar restrição:", err);
-      throw err;
-    }
+    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, payload);
   },
 
   async deleteRestricao(id: number): Promise<void> {
@@ -294,8 +208,6 @@ export const SharePointService = {
   },
 
   async updateRestricao(item: T2_Restricao): Promise<any> {
-    console.log("[Service] updateRestricao - Dados recebidos para atualização:", item);
-    
     const { ID } = item;
     const payload = {
       Title: item.Motorista,
@@ -304,19 +216,9 @@ export const SharePointService = {
       PlacaCarreta: item.PlacaCarreta,
       DataParou: item.DataParou,
       DataVoltou: item.DataVoltou,
-      Observacao: item.Observação // Mapeamento para o nome interno sem acento
+      Observacao: item.Observação
     };
-
-    console.log("[Service] updateRestricao - Payload mapeado para envio:", payload);
-
-    try {
-      const result = await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, ID!, payload);
-      console.log("[Service] updateRestricao - Sucesso ao atualizar restrição:", result);
-      return result;
-    } catch (err: any) {
-      console.error("[Service] updateRestricao - Erro ao atualizar restrição:", err);
-      throw err;
-    }
+    return SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.RESTRICOES.id, ID!, payload);
   },
 
   async getOrigens(): Promise<T2_Origem[]> {
@@ -324,9 +226,7 @@ export const SharePointService = {
   },
 
   async saveOrigem(nome: string): Promise<T2_Origem> {
-    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.ORIGENS.id, { 
-      Title: nome 
-    });
+    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.ORIGENS.id, { Title: nome });
   },
 
   async deleteOrigem(id: number): Promise<void> {
@@ -338,9 +238,7 @@ export const SharePointService = {
   },
 
   async saveDestino(nome: string): Promise<T2_Destino> {
-    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.DESTINOS.id, { 
-      Title: nome 
-    });
+    return SharePointService.createItem(SHAREPOINT_CONFIG.LISTS.DESTINOS.id, { Title: nome });
   },
 
   async deleteDestino(id: number): Promise<void> {

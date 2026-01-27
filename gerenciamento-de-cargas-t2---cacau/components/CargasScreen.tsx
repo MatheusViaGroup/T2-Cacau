@@ -14,6 +14,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Processando...');
+  
   const [showModal, setShowModal] = useState(false);
   const [showMotoristaModal, setShowMotoristaModal] = useState(false);
   const [editingItem, setEditingItem] = useState<T2_Carga | null>(null);
@@ -27,8 +29,18 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
 
+  // Mensagens para o overlay de carregamento
+  const loadingSteps = [
+    "Iniciando integração com n8n...",
+    "Buscando dados da frota no PostgreSQL...",
+    "Consultando restrições no SharePoint...",
+    "IA analisando melhor distribuição...",
+    "IA processando rotas e prioridades...",
+    "Quase lá... finalizando cálculos...",
+    "Atualizando registros no SharePoint..."
+  ];
+
   const generateCargaId = () => {
-    console.log("[UI] generateCargaId - Gerando timestamp");
     const now = new Date();
     const timestamp = now.getFullYear().toString() +
       (now.getMonth() + 1).toString().padStart(2, '0') +
@@ -39,22 +51,13 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   };
 
   const [formData, setFormData] = useState<Partial<T2_Carga>>({
-    CargaId: '',
-    Origem: '',
-    Destino: '',
-    DataColeta: '',
-    HorarioAgendamento: '',
-    Produto: 'Manteiga',
-    MotoristaNome: '',
-    PlacaCavalo: '',
-    PlacaCarreta: '',
-    StatusCavaloConfirmado: false,
-    StatusSistema: 'Pendente'
+    CargaId: '', Origem: '', Destino: '', DataColeta: '', HorarioAgendamento: '',
+    Produto: 'Manteiga', MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
+    StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
   });
 
   useEffect(() => {
     const loadReferences = async () => {
-      console.log("[UI] loadReferences - Buscando origens e destinos");
       setLoadingRefs(true);
       try {
         const [o, d] = await Promise.all([
@@ -63,10 +66,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         ]);
         setOrigens(o);
         setDestinos(d);
-        console.log("[UI] loadReferences - Sucesso");
-      } catch (err) {
-        console.error("[UI] loadReferences - Erro ao carregar refs:", err);
-      } finally {
+      } catch (err) {} finally {
         setLoadingRefs(false);
       }
     };
@@ -74,7 +74,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    console.log("[UI] CargasScreen.fetchData - Buscando cargas atualizadas");
     setIsLoading(true);
     try {
       const data = await SharePointService.getCargas({
@@ -95,11 +94,19 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, [fetchData]);
 
   const handleAutoSelectCavalo = async () => {
-    console.log('[CargasScreen] Seleção automática iniciada - Aguardando processamento do n8n');
     setIsAutoSelecting(true);
+    setLoadingMessage(loadingSteps[0]);
     
+    // Intervalo para trocar as mensagens enquanto o n8n trabalha (leva ~30s)
+    let stepIndex = 1;
+    const interval = setInterval(() => {
+      if (stepIndex < loadingSteps.length) {
+        setLoadingMessage(loadingSteps[stepIndex]);
+        stepIndex++;
+      }
+    }, 4000);
+
     try {
-      // O n8n demora para responder pois processa o SQL e a IA antes do Respond node
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST'
       });
@@ -108,9 +115,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.log('[CargasScreen] Resposta do n8n:', errorText);
-
-        // Se a mensagem for o erro de configuração do n8n, consideramos que o fluxo rodou por completo
         if (errorText.includes("Unused Respond to Webhook node")) {
           triggerExecuted = true;
         } else {
@@ -119,34 +123,29 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       }
 
       if (triggerExecuted) {
-        notify("Processamento de IA concluído! Sincronizando tela...", "success");
-        // ATUALIZAÇÃO IMEDIATA: Como o Respond Node é o último do fluxo n8n, 
-        // a resposta do fetch é o gatilho perfeito para o refresh.
+        setLoadingMessage("Sincronizando dados finais...");
+        // Delay de segurança para propagação no SharePoint
+        await new Promise(resolve => setTimeout(resolve, 2500));
         await fetchData();
+        notify("Distribuição automática concluída!", "success");
       }
 
     } catch (error: any) {
-      console.error('[CargasScreen] Erro no fluxo do webhook:', error);
       notify("Erro na automação: " + error.message, "error");
     } finally {
+      clearInterval(interval);
       setIsAutoSelecting(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[UI] CargasScreen.handleSubmit - Enviando payload:", formData);
     try {
       if (editingItem) {
         await SharePointService.updateCarga({ ...editingItem, ...formData } as T2_Carga);
-        notify("Carga atualizada com sucesso!", "success");
+        notify("Carga atualizada!", "success");
       } else {
-        const payload = {
-          ...formData,
-          MotoristaNome: '',
-          PlacaCavalo: '',
-          PlacaCarreta: '',
-        };
+        const payload = { ...formData, MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '' };
         await SharePointService.createCarga(payload as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
         notify("Nova carga registrada!", "success");
       }
@@ -154,8 +153,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setEditingItem(null);
       fetchData();
     } catch (err: any) {
-      console.error("[UI] CargasScreen.handleSubmit - Erro:", err);
-      notify("Erro ao salvar carga: " + (err.message || "Erro no SharePoint"), "error");
+      notify("Erro ao salvar carga", "error");
     }
   };
 
@@ -179,17 +177,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const openNewCargaModal = () => {
     setEditingItem(null);
     setFormData({
-      CargaId: generateCargaId(),
-      Origem: '',
-      Destino: '',
-      DataColeta: '',
-      HorarioAgendamento: '',
-      Produto: 'Manteiga',
-      MotoristaNome: '',
-      PlacaCavalo: '',
-      PlacaCarreta: '',
-      StatusCavaloConfirmado: false,
-      StatusSistema: 'Pendente'
+      CargaId: generateCargaId(), Origem: '', Destino: '', DataColeta: '', HorarioAgendamento: '',
+      Produto: 'Manteiga', MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
+      StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
     });
     setShowModal(true);
   };
@@ -201,8 +191,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
   const handleMotoristaSelect = async (motoristaFrota: FrotaMotorista) => {
     if (!selectedCargaForMotorista?.ID) return;
-    
-    console.log("[UI] handleMotoristaSelect - Vinculando:", motoristaFrota.MOTORISTA);
     try {
       await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
         motorista: motoristaFrota.MOTORISTA,
@@ -213,12 +201,36 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setShowMotoristaModal(false);
       fetchData();
     } catch (error: any) {
-      notify("Erro ao vincular motorista: " + (error.message || "Erro de API"), "error");
+      notify("Erro ao vincular motorista", "error");
     }
   };
 
   return (
-    <div className="p-6">
+    <div className="p-6 relative">
+      {/* Overlay de Carregamento da IA */}
+      {isAutoSelecting && (
+        <div className="absolute inset-0 z-[150] bg-white/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-8 text-center transition-all duration-500">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 flex flex-col items-center gap-6 max-w-sm animate-fade-in-up">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center animate-pulse">
+                   <svg className="w-4 h-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z"/></svg>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xl font-bold text-slate-800 mb-2">Processando Frota</h4>
+              <p className="text-slate-500 text-sm font-medium animate-pulse">{loadingMessage}</p>
+            </div>
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+               <div className="bg-amber-500 h-full animate-[loading-bar_30s_linear_infinite]"></div>
+            </div>
+            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">IA Seletor v2.5</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Cargas</h2>
@@ -228,16 +240,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           <button 
             onClick={handleAutoSelectCavalo}
             disabled={isAutoSelecting}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
           >
-            {isAutoSelecting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Processando IA...
-              </>
-            ) : (
-              '🚛 Selecionar Cavalo Automaticamente'
-            )}
+            🚛 Selecionar Cavalo Automaticamente
           </button>
           <button 
             onClick={openNewCargaModal}
@@ -311,9 +316,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                     {item.MotoristaTelefone || 'Sem Contato'}
                   </div>
                 </td>
-                <td className="px-4 py-4">
-                  <div className="text-xs">{item.Origem} &rarr; {item.Destino}</div>
-                </td>
+                <td className="px-4 py-4 text-xs">{item.Origem} &rarr; {item.Destino}</td>
                 <td className="px-4 py-4">
                   <div className="font-medium">{item.DataColeta}</div>
                   <div className="text-[10px] text-slate-400">{item.HorarioAgendamento}</div>
@@ -327,13 +330,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 </td>
                 <td className="px-4 py-4 text-right">
                   <div className="flex justify-end gap-1">
-                    <button 
-                      onClick={() => openMotoristaModal(item)} 
-                      title="Vincular Motorista"
-                      className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg>
-                    </button>
+                    <button onClick={() => openMotoristaModal(item)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg></button>
                     <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
                     <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
@@ -345,65 +342,41 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-xl font-bold text-slate-800">{editingItem ? 'Editar Carga' : 'Nova Carga'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Carga ID (Bloqueado)</label>
-                  <input 
-                    readOnly 
-                    disabled
-                    type="text" 
-                    value={formData.CargaId} 
-                    className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-400 font-mono shadow-inner opacity-75 cursor-not-allowed" 
-                  />
+                  <input readOnly disabled type="text" value={formData.CargaId} className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-400 font-mono opacity-75 cursor-not-allowed" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Produto</label>
-                  <select 
-                    value={formData.Produto} 
-                    onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} 
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                  >
+                  <select value={formData.Produto} onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
                     {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Origem</label>
-                  <select 
-                    required
-                    value={formData.Origem}
-                    onChange={e => setFormData({...formData, Origem: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                  >
+                  <select required value={formData.Origem} onChange={e => setFormData({...formData, Origem: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
                     <option value="">{loadingRefs ? 'Carregando...' : 'Selecione a Origem'}</option>
                     {origens.map(o => <option key={o.ID} value={o.NomeLocal}>{o.NomeLocal}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Destino</label>
-                  <select 
-                    required
-                    value={formData.Destino}
-                    onChange={e => setFormData({...formData, Destino: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                  >
+                  <select required value={formData.Destino} onChange={e => setFormData({...formData, Destino: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
                     <option value="">{loadingRefs ? 'Carregando...' : 'Selecione o Destino'}</option>
                     {destinos.map(d => <option key={d.ID} value={d.NomeLocal}>{d.NomeLocal}</option>)}
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Data Coleta</label>
@@ -414,12 +387,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                   <input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
                 </div>
               </div>
-
               <div className="flex gap-4 pt-6 mt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-amber-600 transition-colors">
-                  {editingItem ? 'Salvar Alterações' : 'Criar Registro'}
-                </button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Cancelar</button>
+                <button type="submit" className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-amber-600 transition-colors">{editingItem ? 'Salvar Alterações' : 'Criar Registro'}</button>
               </div>
             </form>
           </div>
@@ -427,11 +397,22 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       )}
 
       {showMotoristaModal && (
-        <MotoristaModal 
-          onClose={() => setShowMotoristaModal(false)}
-          onSelect={handleMotoristaSelect}
-        />
+        <MotoristaModal onClose={() => setShowMotoristaModal(false)} onSelect={handleMotoristaSelect} />
       )}
+
+      <style>{`
+        @keyframes loading-bar {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+          animation: fade-in-up 0.4s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 };
