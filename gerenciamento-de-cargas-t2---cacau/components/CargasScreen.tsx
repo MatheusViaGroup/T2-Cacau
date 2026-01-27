@@ -214,7 +214,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
   return (
     <div className="p-6">
-      {/* MODAL DE CARREGAMENTO IA (DISPARADO APENAS NO CLIQUE AUTOMÁTICO) */}
+      {/* MODAL DE CARREGAMENTO IA (DISPARADO APENAS NO CLIQUE DO BOTÃO IA) */}
       {isAutoSelecting && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-10 shadow-2xl max-w-md w-full flex flex-col items-center text-center gap-6">
@@ -284,6 +284,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         </div>
       </div>
 
+      {/* RESTAURAÇÃO DA TABELA PARA O LAYOUT ORIGINAL */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm bg-white">
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-800 text-slate-200 text-[10px] font-bold uppercase tracking-widest">
@@ -330,9 +331,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex justify-end gap-1">
-                    <button onClick={() => openMotoristaModal(item)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg></button>
-                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
-                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                    <button onClick={() => openMotoristaModal(item)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg" title="Vincular Motorista"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg></button>
+                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Editar"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg" title="Excluir"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
                 </td>
               </tr>
@@ -400,18 +401,20 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         <MotoristaModal onClose={() => { setShowMotoristaModal(false); setSelectedCargaForMotorista(null); }} onSelect={async (m) => {
           if (selectedCargaForMotorista?.ID) {
             try {
+              // ATUALIZAÇÃO MANUAL: Não possui qualquer relação com o Webhook da IA
               await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
                 motorista: m.MOTORISTA,
                 cavalo: m.CAVALO,
                 carreta: m.CARRETA
               });
-              notify("Motorista vinculado com sucesso!", "success");
+              notify("Dados do motorista atualizados!", "success");
             } catch (err) {
-              notify("Erro ao vincular motorista", "error");
+              notify("Erro ao atualizar motorista", "error");
             }
           }
           setShowMotoristaModal(false);
           setSelectedCargaForMotorista(null);
+          // Recarrega apenas a lista local
           fetchData();
         }} />
       )}
