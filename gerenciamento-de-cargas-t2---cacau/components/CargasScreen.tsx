@@ -14,7 +14,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('Processando...');
+  const [loadingMessage, setLoadingMessage] = useState('Iniciando...');
+  const [progress, setProgress] = useState(0);
   
   const [showModal, setShowModal] = useState(false);
   const [showMotoristaModal, setShowMotoristaModal] = useState(false);
@@ -29,32 +30,35 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
 
-  // Mensagens para o overlay de carregamento
   const loadingSteps = [
-    "Iniciando integração com n8n...",
-    "Buscando dados da frota no PostgreSQL...",
-    "Consultando restrições no SharePoint...",
-    "IA analisando melhor distribuição...",
-    "IA processando rotas e prioridades...",
-    "Quase lá... finalizando cálculos...",
-    "Atualizando registros no SharePoint..."
+    "Conectando ao servidor de IA...",
+    "Buscando motoristas disponíveis no PostgreSQL...",
+    "Analisando restrições de agenda...",
+    "IA calculando a melhor distribuição de cargas...",
+    "Validando compatibilidade de veículos...",
+    "IA finalizando as atribuições...",
+    "Aguardando persistência no SharePoint..."
   ];
 
-  const generateCargaId = () => {
-    const now = new Date();
-    const timestamp = now.getFullYear().toString() +
-      (now.getMonth() + 1).toString().padStart(2, '0') +
-      now.getDate().toString().padStart(2, '0') +
-      now.getHours().toString().padStart(2, '0') +
-      now.getMinutes().toString().padStart(2, '0');
-    return `C${timestamp}`;
-  };
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
+    try {
+      const data = await SharePointService.getCargas({
+        motorista: filterMotorista,
+        produto: filterProduto,
+        data: filterData
+      });
+      setCargas(data);
+      return data;
+    } catch (err: any) {
+      notify("Erro ao buscar cargas", "error");
+      return [];
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, [filterMotorista, filterProduto, filterData, notify]);
 
-  const [formData, setFormData] = useState<Partial<T2_Carga>>({
-    CargaId: '', Origem: '', Destino: '', DataColeta: '', HorarioAgendamento: '',
-    Produto: 'Manteiga', MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
-    StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
-  });
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     const loadReferences = async () => {
@@ -73,70 +77,98 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     loadReferences();
   }, []);
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await SharePointService.getCargas({
-        motorista: filterMotorista,
-        produto: filterProduto,
-        data: filterData
-      });
-      setCargas(data);
-    } catch (err: any) {
-      notify("Erro ao buscar cargas: " + (err.message || "Erro de conexão"), "error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filterMotorista, filterProduto, filterData, notify]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
   const handleAutoSelectCavalo = async () => {
     setIsAutoSelecting(true);
+    setProgress(5);
     setLoadingMessage(loadingSteps[0]);
     
-    // Intervalo para trocar as mensagens enquanto o n8n trabalha (leva ~30s)
-    let stepIndex = 1;
-    const interval = setInterval(() => {
-      if (stepIndex < loadingSteps.length) {
-        setLoadingMessage(loadingSteps[stepIndex]);
-        stepIndex++;
-      }
-    }, 4000);
+    let currentStep = 0;
+    const progressInterval = setInterval(() => {
+      setProgress(prev => (prev < 85 ? prev + 0.5 : prev));
+    }, 200);
+
+    const messageInterval = setInterval(() => {
+      currentStep = (currentStep + 1) % (loadingSteps.length - 1);
+      setLoadingMessage(loadingSteps[currentStep]);
+    }, 4500);
 
     try {
+      // 1. Dispara o Webhook
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST'
       });
 
-      let triggerExecuted = response.ok;
-      
+      let webhookTriggered = response.ok;
       if (!response.ok) {
-        const errorText = await response.text();
-        if (errorText.includes("Unused Respond to Webhook node")) {
-          triggerExecuted = true;
-        } else {
-          throw new Error(errorText || `Erro ${response.status}`);
+        const txt = await response.text();
+        if (txt.includes("Unused Respond to Webhook node")) webhookTriggered = true;
+      }
+
+      if (webhookTriggered) {
+        clearInterval(messageInterval);
+        setLoadingMessage("IA respondeu! Verificando dados no SharePoint...");
+        
+        // 2. Lógica de Polling: Verifica se os 3 campos foram preenchidos
+        let dataConfirmed = false;
+        let attempts = 0;
+        const maxAttempts = 20; // ~60 segundos total (20 * 3s)
+
+        while (!dataConfirmed && attempts < maxAttempts) {
+          attempts++;
+          console.log(`[IA] Verificação de dados - Tentativa ${attempts}/${maxAttempts}`);
+          
+          const updatedCargas = await fetchData(true); // silent fetch
+          
+          // Verifica se alguma carga que estava sem motorista agora possui os 3 campos preenchidos
+          // OU se houve preenchimento geral de campos de motorista
+          const hasUpdates = updatedCargas.some(c => 
+            c.MotoristaNome && 
+            c.PlacaCavalo && 
+            c.PlacaCarreta
+          );
+
+          if (hasUpdates) {
+            dataConfirmed = true;
+            console.log("[IA] Sucesso! Dados encontrados no SharePoint.");
+          } else {
+            // Aguarda 3 segundos antes da próxima checada
+            await new Promise(r => setTimeout(r, 3000));
+            setLoadingMessage(`Aguardando campos: Motorista, Cavalo e Carreta... (${attempts})`);
+          }
         }
-      }
 
-      if (triggerExecuted) {
-        setLoadingMessage("Sincronizando dados finais...");
-        // Delay de segurança para propagação no SharePoint
-        await new Promise(resolve => setTimeout(resolve, 2500));
+        setProgress(100);
+        if (!dataConfirmed) {
+          notify("Tempo de espera excedido, mas o processo continua em background.", "info");
+        } else {
+          notify("Distribuição automática sincronizada!", "success");
+        }
+        
+        await new Promise(r => setTimeout(r, 1000));
         await fetchData();
-        notify("Distribuição automática concluída!", "success");
+      } else {
+        throw new Error("Falha ao iniciar processamento");
       }
-
     } catch (error: any) {
-      notify("Erro na automação: " + error.message, "error");
+      notify("Erro na IA: " + error.message, "error");
     } finally {
-      clearInterval(interval);
+      clearInterval(progressInterval);
+      clearInterval(messageInterval);
       setIsAutoSelecting(false);
+      setProgress(0);
     }
   };
+
+  const generateCargaId = () => {
+    const now = new Date();
+    return `C${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  const [formData, setFormData] = useState<Partial<T2_Carga>>({
+    CargaId: '', Origem: '', Destino: '', DataColeta: '', HorarioAgendamento: '',
+    Produto: 'Manteiga', MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
+    StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,80 +185,61 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setEditingItem(null);
       fetchData();
     } catch (err: any) {
-      notify("Erro ao salvar carga", "error");
+      notify("Erro ao salvar", "error");
     }
-  };
-
-  const handleEdit = (item: T2_Carga) => {
-    setEditingItem(item);
-    setFormData(item);
-    setShowModal(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Deseja realmente excluir esta carga?")) return;
+    if (!window.confirm("Deseja excluir?")) return;
     try {
       await SharePointService.deleteCarga(id);
-      notify("Carga removida!", "info");
+      notify("Carga removida", "info");
       fetchData();
-    } catch (err: any) {
-      notify("Erro ao excluir registro", "error");
-    }
-  };
-
-  const openNewCargaModal = () => {
-    setEditingItem(null);
-    setFormData({
-      CargaId: generateCargaId(), Origem: '', Destino: '', DataColeta: '', HorarioAgendamento: '',
-      Produto: 'Manteiga', MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
-      StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
-    });
-    setShowModal(true);
-  };
-
-  const openMotoristaModal = (item: T2_Carga) => {
-    setSelectedCargaForMotorista(item);
-    setShowMotoristaModal(true);
-  };
-
-  const handleMotoristaSelect = async (motoristaFrota: FrotaMotorista) => {
-    if (!selectedCargaForMotorista?.ID) return;
-    try {
-      await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
-        motorista: motoristaFrota.MOTORISTA,
-        cavalo: motoristaFrota.CAVALO,
-        carreta: motoristaFrota.CARRETA
-      });
-      notify(`Motorista ${motoristaFrota.MOTORISTA} vinculado!`, "success");
-      setShowMotoristaModal(false);
-      fetchData();
-    } catch (error: any) {
-      notify("Erro ao vincular motorista", "error");
-    }
+    } catch (err) { notify("Erro ao excluir", "error"); }
   };
 
   return (
-    <div className="p-6 relative">
-      {/* Overlay de Carregamento da IA */}
+    <div className="p-6">
+      {/* MODAL DE CARREGAMENTO IA COM POLLING DE DADOS */}
       {isAutoSelecting && (
-        <div className="absolute inset-0 z-[150] bg-white/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-8 text-center transition-all duration-500">
-          <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 flex flex-col items-center gap-6 max-w-sm animate-fade-in-up">
+        <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-500">
+          <div className="bg-white rounded-3xl p-10 shadow-2xl max-w-md w-full flex flex-col items-center text-center gap-6 border border-white/20">
             <div className="relative">
-              <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-24 h-24 border-4 border-slate-100 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center animate-pulse">
-                   <svg className="w-4 h-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z"/></svg>
-                </div>
+                <svg className="w-10 h-10 text-amber-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
               </div>
             </div>
-            <div>
-              <h4 className="text-xl font-bold text-slate-800 mb-2">Processando Frota</h4>
-              <p className="text-slate-500 text-sm font-medium animate-pulse">{loadingMessage}</p>
+            
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-slate-800 tracking-tight">IA Seletor</h3>
+              <p className="text-slate-500 font-medium h-16 flex items-center justify-center px-4 leading-snug">
+                {loadingMessage}
+              </p>
             </div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-               <div className="bg-amber-500 h-full animate-[loading-bar_30s_linear_infinite]"></div>
+
+            <div className="w-full space-y-2">
+              <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <span>Status de Sincronização</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
+                <div 
+                  className="bg-amber-500 h-full transition-all duration-700 ease-in-out shadow-[0_0_15px_rgba(245,158,11,0.5)]" 
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">IA Seletor v2.5</p>
+
+            <div className="pt-4 border-t border-slate-100 w-full flex flex-col gap-1">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Validando campos obrigatórios no SharePoint</p>
+              <div className="flex justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse delay-75"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse delay-150"></span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -240,13 +253,14 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           <button 
             onClick={handleAutoSelectCavalo}
             disabled={isAutoSelecting}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
           >
-            🚛 Selecionar Cavalo Automaticamente
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Selecionar Automático (IA)
           </button>
           <button 
             onClick={openNewCargaModal}
-            className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl font-semibold shadow-sm transition-colors flex items-center gap-2"
+            className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
             Nova Carga
@@ -256,83 +270,51 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-4 text-sm">
         <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Motorista</label>
-          <input 
-            type="text" 
-            value={filterMotorista}
-            onChange={(e) => setFilterMotorista(e.target.value)}
-            placeholder="Filtrar por nome..." 
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-          />
+          <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Motorista</label>
+          <input type="text" value={filterMotorista} onChange={(e) => setFilterMotorista(e.target.value)} placeholder="Filtrar..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 outline-none" />
         </div>
         <div className="w-48">
-          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Produto</label>
-          <select 
-            value={filterProduto}
-            onChange={(e) => setFilterProduto(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-          >
+          <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Produto</label>
+          <select value={filterProduto} onChange={(e) => setFilterProduto(e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 outline-none">
             <option value="">Todos</option>
             {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div className="w-48">
-          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Data</label>
-          <input 
-            type="date" 
-            value={filterData}
-            onChange={(e) => setFilterData(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-          />
+          <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Data</label>
+          <input type="date" value={filterData} onChange={(e) => setFilterData(e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 outline-none" />
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm bg-white">
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-800 text-slate-200 text-[10px] uppercase font-bold">
+          <thead className="bg-slate-800 text-slate-200 text-[10px] font-black uppercase tracking-widest">
             <tr>
-              <th className="px-4 py-3">Carga ID</th>
-              <th className="px-4 py-3">Produto</th>
-              <th className="px-4 py-3">Motorista</th>
-              <th className="px-4 py-3">Rota</th>
-              <th className="px-4 py-3">Data/Hora</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Ações</th>
+              <th className="px-5 py-4">Carga ID</th>
+              <th className="px-5 py-4">Produto</th>
+              <th className="px-5 py-4">MotoristaNome</th>
+              <th className="px-5 py-4">PlacaCavalo</th>
+              <th className="px-5 py-4">PlacaCarreta</th>
+              <th className="px-5 py-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Processando dados do SharePoint...</td></tr>
+              <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400 font-medium">Sincronizando dados...</td></tr>
             ) : cargas.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Nenhum registro encontrado.</td></tr>
+              <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400 italic">Nenhum registro.</td></tr>
             ) : cargas.map(item => (
               <tr key={item.ID} className="hover:bg-slate-50 transition-colors text-sm">
-                <td className="px-4 py-4 font-bold text-amber-600 uppercase">{item.CargaId}</td>
-                <td className="px-4 py-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 border border-slate-200">{item.Produto}</span></td>
-                <td className="px-4 py-4">
-                  <div className="font-semibold">{item.MotoristaNome || <span className="text-slate-300 italic">Não atribuído</span>}</div>
-                  <div className="text-[10px] text-slate-400 font-medium">
-                    {item.PlacaCavalo && <span className="mr-2">🚛 {item.PlacaCavalo}</span>}
-                    {item.MotoristaTelefone || 'Sem Contato'}
-                  </div>
-                </td>
-                <td className="px-4 py-4 text-xs">{item.Origem} &rarr; {item.Destino}</td>
-                <td className="px-4 py-4">
-                  <div className="font-medium">{item.DataColeta}</div>
-                  <div className="text-[10px] text-slate-400">{item.HorarioAgendamento}</div>
-                </td>
-                <td className="px-4 py-4">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                    item.StatusSistema === 'Concluído' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
-                  }`}>
-                    {item.StatusSistema}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <div className="flex justify-end gap-1">
-                    <button onClick={() => openMotoristaModal(item)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg></button>
-                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
-                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                <td className="px-5 py-4 font-black text-amber-600 uppercase">{item.CargaId}</td>
+                <td className="px-5 py-4"><span className="px-2 py-1 bg-slate-100 rounded text-[10px] font-black text-slate-500 border uppercase">{item.Produto}</span></td>
+                <td className="px-5 py-4 font-bold text-slate-800">{item.MotoristaNome || <span className="text-slate-300 italic font-normal">Pendente</span>}</td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-600 font-bold">{item.PlacaCavalo}</td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-600 font-bold">{item.PlacaCarreta}</td>
+                <td className="px-5 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowMotoristaModal(true)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></button>
+                    <button onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }} className="p-2 text-slate-400 hover:text-slate-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-2 text-red-400 hover:text-red-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
                 </td>
               </tr>
@@ -343,76 +325,55 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-slate-800">{editingItem ? 'Editar Carga' : 'Nova Carga'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Carga ID (Bloqueado)</label>
-                  <input readOnly disabled type="text" value={formData.CargaId} className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-400 font-mono opacity-75 cursor-not-allowed" />
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
+             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+               <h3 className="text-xl font-black text-slate-800 uppercase">Dados da Carga</h3>
+               <button onClick={() => setShowModal(false)} className="text-slate-400 p-2"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+             </div>
+             <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Carga ID</label>
+                    <input readOnly value={formData.CargaId || generateCargaId()} className="w-full bg-slate-50 border rounded-xl px-4 py-3 text-sm font-mono" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Produto</label>
+                    <select value={formData.Produto} onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} className="w-full border rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-amber-500">
+                      {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Produto</label>
-                  <select value={formData.Produto} onChange={e => setFormData({...formData, Produto: e.target.value as ProdutoType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
-                    {PRODUTOS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Origem</label>
+                    <select required value={formData.Origem} onChange={e => setFormData({...formData, Origem: e.target.value})} className="w-full border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+                      <option value="">Selecione...</option>
+                      {origens.map(o => <option key={o.ID} value={o.NomeLocal}>{o.NomeLocal}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Destino</label>
+                    <select required value={formData.Destino} onChange={e => setFormData({...formData, Destino: e.target.value})} className="w-full border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+                      <option value="">Selecione...</option>
+                      {destinos.map(d => <option key={d.ID} value={d.NomeLocal}>{d.NomeLocal}</option>)}
+                    </select>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Origem</label>
-                  <select required value={formData.Origem} onChange={e => setFormData({...formData, Origem: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
-                    <option value="">{loadingRefs ? 'Carregando...' : 'Selecione a Origem'}</option>
-                    {origens.map(o => <option key={o.ID} value={o.NomeLocal}>{o.NomeLocal}</option>)}
-                  </select>
+                <div className="flex gap-4">
+                  <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-6 py-4 bg-slate-100 rounded-2xl font-black uppercase text-xs">Cancelar</button>
+                  <button type="submit" className="flex-1 px-6 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-amber-500/30">Salvar Carga</button>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Destino</label>
-                  <select required value={formData.Destino} onChange={e => setFormData({...formData, Destino: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all">
-                    <option value="">{loadingRefs ? 'Carregando...' : 'Selecione o Destino'}</option>
-                    {destinos.map(d => <option key={d.ID} value={d.NomeLocal}>{d.NomeLocal}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Data Coleta</label>
-                  <input required type="date" value={formData.DataColeta} onChange={e => setFormData({...formData, DataColeta: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Horário Agendamento</label>
-                  <input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
-                </div>
-              </div>
-              <div className="flex gap-4 pt-6 mt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Cancelar</button>
-                <button type="submit" className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-amber-600 transition-colors">{editingItem ? 'Salvar Alterações' : 'Criar Registro'}</button>
-              </div>
-            </form>
+             </form>
           </div>
         </div>
       )}
 
       {showMotoristaModal && (
-        <MotoristaModal onClose={() => setShowMotoristaModal(false)} onSelect={handleMotoristaSelect} />
+        <MotoristaModal onClose={() => setShowMotoristaModal(false)} onSelect={(m) => {
+          setShowMotoristaModal(false);
+          fetchData();
+        }} />
       )}
-
-      <style>{`
-        @keyframes loading-bar {
-          from { width: 0%; }
-          to { width: 100%; }
-        }
-        @keyframes fade-in-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up {
-          animation: fade-in-up 0.4s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 };
