@@ -74,7 +74,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    console.log("[UI] CargasScreen.fetchData - Buscando cargas");
+    console.log("[UI] CargasScreen.fetchData - Buscando cargas atualizadas");
     setIsLoading(true);
     try {
       const data = await SharePointService.getCargas({
@@ -95,40 +95,39 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, [fetchData]);
 
   const handleAutoSelectCavalo = async () => {
-    console.log('[CargasScreen] Seleção automática iniciada - Disparando Webhook');
+    console.log('[CargasScreen] Seleção automática iniciada - Aguardando processamento do n8n');
     setIsAutoSelecting(true);
     
     try {
-      // Usamos uma requisição POST simples sem body ou headers complexos para o n8n
+      // O n8n demora para responder pois processa o SQL e a IA antes do Respond node
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST'
       });
 
-      // Se a resposta for OK, perfeito.
-      if (response.ok) {
-        notify("Pedido de seleção enviado com sucesso!", "success");
-      } else {
-        // Se der erro 500, verificamos se é o erro específico de configuração do n8n
+      let triggerExecuted = response.ok;
+      
+      if (!response.ok) {
         const errorText = await response.text();
-        console.log('[CargasScreen] Resposta do Servidor:', errorText);
+        console.log('[CargasScreen] Resposta do n8n:', errorText);
 
+        // Se a mensagem for o erro de configuração do n8n, consideramos que o fluxo rodou por completo
         if (errorText.includes("Unused Respond to Webhook node")) {
-          // O n8n disparou o fluxo mas reclamou do nó de resposta. 
-          // Para o nosso caso, isso conta como SUCESSO DE DISPARO.
-          notify("Comando de seleção disparado!", "success");
+          triggerExecuted = true;
         } else {
-          // Se for outro erro real (ex: 404, erro de rede, erro de permissão)
           throw new Error(errorText || `Erro ${response.status}`);
         }
       }
 
-      console.log('[CargasScreen] Seleção automática concluída');
-      // Aguarda 3 segundos para dar tempo ao fluxo do n8n realizar as alterações no SharePoint
-      setTimeout(() => fetchData(), 3000);
+      if (triggerExecuted) {
+        notify("Processamento de IA concluído! Sincronizando tela...", "success");
+        // ATUALIZAÇÃO IMEDIATA: Como o Respond Node é o último do fluxo n8n, 
+        // a resposta do fetch é o gatilho perfeito para o refresh.
+        await fetchData();
+      }
 
     } catch (error: any) {
-      console.error('[CargasScreen] Erro real no disparo:', error);
-      notify("Falha ao disparar comando: " + error.message, "error");
+      console.error('[CargasScreen] Erro no fluxo do webhook:', error);
+      notify("Erro na automação: " + error.message, "error");
     } finally {
       setIsAutoSelecting(false);
     }
@@ -234,7 +233,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
             {isAutoSelecting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Processando...
+                Processando IA...
               </>
             ) : (
               '🚛 Selecionar Cavalo Automaticamente'
