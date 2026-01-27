@@ -101,28 +101,27 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         },
-        // Enviando body vazio para evitar erros de validação no n8n se ele não esperar campos específicos
-        body: JSON.stringify({})
+        // Enviamos um evento nomeado para que o n8n identifique a origem da chamada
+        body: JSON.stringify({ event: 'webapp_auto_selection' })
       });
 
       if (!response.ok) {
-        let errorDetail = `Servidor retornou erro ${response.status}`;
+        let serverError = `Erro ${response.status}`;
         try {
-          // Tenta extrair mensagem de erro amigável enviada pelo n8n
-          const errorData = await response.json();
-          errorDetail = errorData.message || errorData.error || errorDetail;
+          // Captura a mensagem de erro amigável que o n8n retorna (como visto no print)
+          const errorBody = await response.text();
+          if (errorBody) serverError = errorBody;
         } catch (e) {}
-        throw new Error(errorDetail);
+        throw new Error(serverError);
       }
 
-      notify("Seleção automática de cavalo concluída com sucesso!", "success");
+      notify("Seleção automática de cavalo concluída!", "success");
       console.log('[CargasScreen] Seleção automática concluída');
       
-      // Delay de 1.5s para permitir que o processamento do n8n/SharePoint termine antes de recarregar a lista
-      setTimeout(() => fetchData(), 1500);
+      // Delay estratégico para o SharePoint processar antes do refresh
+      setTimeout(() => fetchData(), 2000);
     } catch (error: any) {
       console.error('[CargasScreen] Erro na seleção automática:', error);
       notify("Erro na seleção automática: " + error.message, "error");
@@ -226,7 +225,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           <button 
             onClick={handleAutoSelectCavalo}
             disabled={isAutoSelecting}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait"
           >
             {isAutoSelecting ? (
               <>
