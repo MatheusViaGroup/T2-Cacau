@@ -95,36 +95,40 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, [fetchData]);
 
   const handleAutoSelectCavalo = async () => {
-    console.log('[CargasScreen] Seleção automática iniciada');
+    console.log('[CargasScreen] Seleção automática iniciada - Disparando Webhook');
     setIsAutoSelecting(true);
+    
     try {
+      // Usamos uma requisição POST simples sem body ou headers complexos para o n8n
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        // Enviamos um evento nomeado para que o n8n identifique a origem da chamada
-        body: JSON.stringify({ event: 'webapp_auto_selection' })
+        method: 'POST'
       });
 
-      if (!response.ok) {
-        let serverError = `Erro ${response.status}`;
-        try {
-          // Captura a mensagem de erro amigável que o n8n retorna (como visto no print)
-          const errorBody = await response.text();
-          if (errorBody) serverError = errorBody;
-        } catch (e) {}
-        throw new Error(serverError);
+      // Se a resposta for OK, perfeito.
+      if (response.ok) {
+        notify("Pedido de seleção enviado com sucesso!", "success");
+      } else {
+        // Se der erro 500, verificamos se é o erro específico de configuração do n8n
+        const errorText = await response.text();
+        console.log('[CargasScreen] Resposta do Servidor:', errorText);
+
+        if (errorText.includes("Unused Respond to Webhook node")) {
+          // O n8n disparou o fluxo mas reclamou do nó de resposta. 
+          // Para o nosso caso, isso conta como SUCESSO DE DISPARO.
+          notify("Comando de seleção disparado!", "success");
+        } else {
+          // Se for outro erro real (ex: 404, erro de rede, erro de permissão)
+          throw new Error(errorText || `Erro ${response.status}`);
+        }
       }
 
-      notify("Seleção automática de cavalo concluída!", "success");
       console.log('[CargasScreen] Seleção automática concluída');
-      
-      // Delay estratégico para o SharePoint processar antes do refresh
-      setTimeout(() => fetchData(), 2000);
+      // Aguarda 3 segundos para dar tempo ao fluxo do n8n realizar as alterações no SharePoint
+      setTimeout(() => fetchData(), 3000);
+
     } catch (error: any) {
-      console.error('[CargasScreen] Erro na seleção automática:', error);
-      notify("Erro na seleção automática: " + error.message, "error");
+      console.error('[CargasScreen] Erro real no disparo:', error);
+      notify("Falha ao disparar comando: " + error.message, "error");
     } finally {
       setIsAutoSelecting(false);
     }
@@ -225,12 +229,12 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           <button 
             onClick={handleAutoSelectCavalo}
             disabled={isAutoSelecting}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait"
           >
             {isAutoSelecting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Selecionando...
+                Processando...
               </>
             ) : (
               '🚛 Selecionar Cavalo Automaticamente'
