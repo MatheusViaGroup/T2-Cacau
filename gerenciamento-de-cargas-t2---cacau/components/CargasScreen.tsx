@@ -100,20 +100,32 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     try {
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'auto_select_cavalo', timestamp: new Date().toISOString() })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        // Enviando body vazio para evitar erros de validação no n8n se ele não esperar campos específicos
+        body: JSON.stringify({})
       });
 
       if (!response.ok) {
-        throw new Error(`Erro no servidor: ${response.status}`);
+        let errorDetail = `Servidor retornou erro ${response.status}`;
+        try {
+          // Tenta extrair mensagem de erro amigável enviada pelo n8n
+          const errorData = await response.json();
+          errorDetail = errorData.message || errorData.error || errorDetail;
+        } catch (e) {}
+        throw new Error(errorDetail);
       }
 
       notify("Seleção automática de cavalo concluída com sucesso!", "success");
       console.log('[CargasScreen] Seleção automática concluída');
-      fetchData();
+      
+      // Delay de 1.5s para permitir que o processamento do n8n/SharePoint termine antes de recarregar a lista
+      setTimeout(() => fetchData(), 1500);
     } catch (error: any) {
       console.error('[CargasScreen] Erro na seleção automática:', error);
-      notify("Erro na seleção automática: " + (error.message || "Erro desconhecido"), "error");
+      notify("Erro na seleção automática: " + error.message, "error");
     } finally {
       setIsAutoSelecting(false);
     }
@@ -214,9 +226,16 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           <button 
             onClick={handleAutoSelectCavalo}
             disabled={isAutoSelecting}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isAutoSelecting ? 'Selecionando...' : '🚛 Selecionar Cavalo Automaticamente'}
+            {isAutoSelecting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Selecionando...
+              </>
+            ) : (
+              '🚛 Selecionar Cavalo Automaticamente'
+            )}
           </button>
           <button 
             onClick={openNewCargaModal}
