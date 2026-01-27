@@ -93,7 +93,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     }, 4500);
 
     try {
-      // 1. Dispara o Webhook
       const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/seletor', {
         method: 'POST'
       });
@@ -108,40 +107,30 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         clearInterval(messageInterval);
         setLoadingMessage("IA respondeu! Verificando dados no SharePoint...");
         
-        // 2. Lógica de Polling: Verifica se os 3 campos foram preenchidos
         let dataConfirmed = false;
         let attempts = 0;
-        const maxAttempts = 20; // ~60 segundos total (20 * 3s)
+        const maxAttempts = 20;
 
         while (!dataConfirmed && attempts < maxAttempts) {
           attempts++;
-          console.log(`[IA] Verificação de dados - Tentativa ${attempts}/${maxAttempts}`);
-          
-          const updatedCargas = await fetchData(true); // silent fetch
-          
-          // Verifica se alguma carga que estava sem motorista agora possui os 3 campos preenchidos
-          // OU se houve preenchimento geral de campos de motorista
+          const updatedCargas = await fetchData(true);
           const hasUpdates = updatedCargas.some(c => 
-            c.MotoristaNome && 
-            c.PlacaCavalo && 
-            c.PlacaCarreta
+            c.MotoristaNome && c.PlacaCavalo && c.PlacaCarreta
           );
 
           if (hasUpdates) {
             dataConfirmed = true;
-            console.log("[IA] Sucesso! Dados encontrados no SharePoint.");
           } else {
-            // Aguarda 3 segundos antes da próxima checada
             await new Promise(r => setTimeout(r, 3000));
-            setLoadingMessage(`Aguardando campos: Motorista, Cavalo e Carreta... (${attempts})`);
+            setLoadingMessage(`Aguardando gravação no SharePoint... (${attempts})`);
           }
         }
 
         setProgress(100);
-        if (!dataConfirmed) {
-          notify("Tempo de espera excedido, mas o processo continua em background.", "info");
+        if (dataConfirmed) {
+          notify("IA sincronizada com sucesso!", "success");
         } else {
-          notify("Distribuição automática sincronizada!", "success");
+          notify("Processo concluído. Verifique os dados em instantes.", "info");
         }
         
         await new Promise(r => setTimeout(r, 1000));
@@ -170,23 +159,27 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
   });
 
-  // Fix: Added the missing openNewCargaModal function to initialize form state for new entries
   const openNewCargaModal = () => {
     setEditingItem(null);
     setFormData({
-      CargaId: generateCargaId(),
-      Origem: '',
-      Destino: '',
+      CargaId: generateCargaId(), Origem: '', Destino: '', 
       DataColeta: new Date().toISOString().split('T')[0],
-      HorarioAgendamento: '',
-      Produto: 'Manteiga',
-      MotoristaNome: '',
-      PlacaCavalo: '',
-      PlacaCarreta: '',
-      StatusCavaloConfirmado: false,
-      StatusSistema: 'Pendente'
+      HorarioAgendamento: '', Produto: 'Manteiga',
+      MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '',
+      StatusCavaloConfirmado: false, StatusSistema: 'Pendente'
     });
     setShowModal(true);
+  };
+
+  const handleEdit = (item: T2_Carga) => {
+    setEditingItem(item);
+    setFormData(item);
+    setShowModal(true);
+  };
+
+  const openMotoristaModal = (item: T2_Carga) => {
+    setSelectedCargaForMotorista(item);
+    setShowMotoristaModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,25 +197,27 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       setEditingItem(null);
       fetchData();
     } catch (err: any) {
-      notify("Erro ao salvar", "error");
+      notify("Erro ao salvar carga", "error");
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Deseja excluir?")) return;
+    if (!window.confirm("Deseja realmente excluir esta carga?")) return;
     try {
       await SharePointService.deleteCarga(id);
-      notify("Carga removida", "info");
+      notify("Carga removida!", "info");
       fetchData();
-    } catch (err) { notify("Erro ao excluir", "error"); }
+    } catch (err: any) {
+      notify("Erro ao excluir registro", "error");
+    }
   };
 
   return (
     <div className="p-6">
-      {/* MODAL DE CARREGAMENTO IA COM POLLING DE DADOS */}
+      {/* MODAL DE CARREGAMENTO IA (DISPARADO APENAS NO CLIQUE AUTOMÁTICO) */}
       {isAutoSelecting && (
-        <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-500">
-          <div className="bg-white rounded-3xl p-10 shadow-2xl max-w-md w-full flex flex-col items-center text-center gap-6 border border-white/20">
+        <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl p-10 shadow-2xl max-w-md w-full flex flex-col items-center text-center gap-6">
             <div className="relative">
               <div className="w-24 h-24 border-4 border-slate-100 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
@@ -230,33 +225,17 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <svg className="w-10 h-10 text-amber-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
               </div>
             </div>
-            
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-800 tracking-tight">IA Seletor</h3>
-              <p className="text-slate-500 font-medium h-16 flex items-center justify-center px-4 leading-snug">
-                {loadingMessage}
-              </p>
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">IA Seletor</h3>
+              <p className="text-slate-500 font-medium h-16 flex items-center justify-center px-4 leading-snug">{loadingMessage}</p>
             </div>
-
             <div className="w-full space-y-2">
               <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <span>Status de Sincronização</span>
+                <span>Processando</span>
                 <span>{Math.round(progress)}%</span>
               </div>
-              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
-                <div 
-                  className="bg-amber-500 h-full transition-all duration-700 ease-in-out shadow-[0_0_15px_rgba(245,158,11,0.5)]" 
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 w-full flex flex-col gap-1">
-              <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Validando campos obrigatórios no SharePoint</p>
-              <div className="flex justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse delay-75"></span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse delay-150"></span>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                <div className="bg-amber-500 h-full transition-all duration-700 shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${progress}%` }}></div>
               </div>
             </div>
           </div>
@@ -290,7 +269,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-4 text-sm">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Motorista</label>
-          <input type="text" value={filterMotorista} onChange={(e) => setFilterMotorista(e.target.value)} placeholder="Filtrar..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 outline-none" />
+          <input type="text" value={filterMotorista} onChange={(e) => setFilterMotorista(e.target.value)} placeholder="Filtrar por nome..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none" />
         </div>
         <div className="w-48">
           <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Produto</label>
@@ -307,34 +286,53 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm bg-white">
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-800 text-slate-200 text-[10px] font-black uppercase tracking-widest">
+          <thead className="bg-slate-800 text-slate-200 text-[10px] font-bold uppercase tracking-widest">
             <tr>
               <th className="px-5 py-4">Carga ID</th>
               <th className="px-5 py-4">Produto</th>
-              <th className="px-5 py-4">MotoristaNome</th>
-              <th className="px-5 py-4">PlacaCavalo</th>
-              <th className="px-5 py-4">PlacaCarreta</th>
+              <th className="px-5 py-4">Motorista</th>
+              <th className="px-5 py-4">Rota</th>
+              <th className="px-5 py-4">Data/Hora</th>
+              <th className="px-5 py-4">Status</th>
               <th className="px-5 py-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400 font-medium">Sincronizando dados...</td></tr>
+              <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-medium">Sincronizando dados...</td></tr>
             ) : cargas.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400 italic">Nenhum registro.</td></tr>
+              <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 italic">Nenhuma carga encontrada.</td></tr>
             ) : cargas.map(item => (
               <tr key={item.ID} className="hover:bg-slate-50 transition-colors text-sm">
-                <td className="px-5 py-4 font-black text-amber-600 uppercase">{item.CargaId}</td>
-                <td className="px-5 py-4"><span className="px-2 py-1 bg-slate-100 rounded text-[10px] font-black text-slate-500 border uppercase">{item.Produto}</span></td>
-                <td className="px-5 py-4 font-bold text-slate-800">{item.MotoristaNome || <span className="text-slate-300 italic font-normal">Pendente</span>}</td>
-                <td className="px-5 py-4 font-mono text-xs text-slate-600 font-bold">{item.PlacaCavalo}</td>
-                <td className="px-5 py-4 font-mono text-xs text-slate-600 font-bold">{item.PlacaCarreta}</td>
+                <td className="px-5 py-4 font-bold text-amber-600 uppercase">{item.CargaId}</td>
+                <td className="px-5 py-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500 border border-slate-200">{item.Produto}</span></td>
+                <td className="px-5 py-4">
+                  <div className="font-bold text-slate-800">{item.MotoristaNome || <span className="text-slate-300 italic font-normal">Pendente</span>}</div>
+                  <div className="text-[10px] text-slate-400 font-medium uppercase">
+                    {item.PlacaCavalo && <span className="mr-2">🚛 {item.PlacaCavalo}</span>}
+                    {item.MotoristaTelefone || 'Sem Contato'}
+                  </div>
+                </td>
+                <td className="px-5 py-4">
+                   <div className="text-xs font-semibold text-slate-600">{item.Origem}</div>
+                   <div className="text-[10px] text-slate-400 font-bold italic">para {item.Destino}</div>
+                </td>
+                <td className="px-5 py-4">
+                  <div className="font-medium text-slate-700">{item.DataColeta}</div>
+                  <div className="text-[10px] text-slate-400">{item.HorarioAgendamento}</div>
+                </td>
+                <td className="px-5 py-4">
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                    item.StatusSistema === 'Concluído' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                  }`}>
+                    {item.StatusSistema}
+                  </span>
+                </td>
                 <td className="px-5 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    {/* Fix: Capture the selected item before opening the motorista modal */}
-                    <button onClick={() => { setSelectedCargaForMotorista(item); setShowMotoristaModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></button>
-                    <button onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }} className="p-2 text-slate-400 hover:text-slate-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
-                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-2 text-red-400 hover:text-red-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                  <div className="flex justify-end gap-1">
+                    <button onClick={() => openMotoristaModal(item)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1" /></svg></button>
+                    <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                    <button onClick={() => item.ID && handleDelete(item.ID)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                   </div>
                 </td>
               </tr>
@@ -354,7 +352,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Carga ID</label>
-                    <input readOnly value={formData.CargaId || generateCargaId()} className="w-full bg-slate-50 border rounded-xl px-4 py-3 text-sm font-mono" />
+                    <input readOnly value={formData.CargaId} className="w-full bg-slate-50 border rounded-xl px-4 py-3 text-sm font-mono" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Produto</label>
@@ -379,6 +377,16 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                     </select>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Data Coleta</label>
+                    <input required type="date" value={formData.DataColeta} onChange={e => setFormData({...formData, DataColeta: e.target.value})} className="w-full border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-amber-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Horário</label>
+                    <input required type="time" value={formData.HorarioAgendamento} onChange={e => setFormData({...formData, HorarioAgendamento: e.target.value})} className="w-full border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-amber-500" />
+                  </div>
+                </div>
                 <div className="flex gap-4">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-6 py-4 bg-slate-100 rounded-2xl font-black uppercase text-xs">Cancelar</button>
                   <button type="submit" className="flex-1 px-6 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-amber-500/30">Salvar Carga</button>
@@ -392,7 +400,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         <MotoristaModal onClose={() => { setShowMotoristaModal(false); setSelectedCargaForMotorista(null); }} onSelect={async (m) => {
           if (selectedCargaForMotorista?.ID) {
             try {
-              // Fix: Implement updating the specific carga with the motorista details from the modal
               await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
                 motorista: m.MOTORISTA,
                 cavalo: m.CAVALO,
