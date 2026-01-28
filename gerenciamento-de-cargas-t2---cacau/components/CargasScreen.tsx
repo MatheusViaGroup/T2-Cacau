@@ -13,7 +13,8 @@ interface CargasProps {
 const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAutoSelecting, setIsAutoSelecting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processType, setProcessType] = useState<'IA' | 'MSG'>('IA');
   const [loadingMessage, setLoadingMessage] = useState('Iniciando...');
   const [progress, setProgress] = useState(0);
   
@@ -30,7 +31,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [filterProduto, setFilterProduto] = useState('');
   const [filterData, setFilterData] = useState('');
 
-  const loadingSteps = [
+  const loadingStepsIA = [
     "Conectando ao servidor de IA...",
     "Buscando motoristas disponíveis no PostgreSQL...",
     "Analisando restrições de agenda...",
@@ -38,6 +39,16 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     "Validando compatibilidade de veículos...",
     "IA finalizando as atribuições...",
     "Aguardando persistência no SharePoint..."
+  ];
+
+  const loadingStepsMSG = [
+    "Iniciando processo de notificação...",
+    "Conectando ao servidor de mensagens...",
+    "Consultando telefones dos motoristas no SharePoint...",
+    "Formatando mensagens personalizadas...",
+    "Enviando notificações via WhatsApp...",
+    "Aguardando confirmação de entrega...",
+    "Finalizando disparos..."
   ];
 
   const fetchData = useCallback(async (silent = false) => {
@@ -78,9 +89,10 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   }, []);
 
   const handleAutoSelectCavalo = async () => {
-    setIsAutoSelecting(true);
+    setProcessType('IA');
+    setIsProcessing(true);
     setProgress(5);
-    setLoadingMessage(loadingSteps[0]);
+    setLoadingMessage(loadingStepsIA[0]);
     
     let currentStep = 0;
     const progressInterval = setInterval(() => {
@@ -88,8 +100,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     }, 200);
 
     const messageInterval = setInterval(() => {
-      currentStep = (currentStep + 1) % (loadingSteps.length - 1);
-      setLoadingMessage(loadingSteps[currentStep]);
+      currentStep = (currentStep + 1) % (loadingStepsIA.length - 1);
+      setLoadingMessage(loadingStepsIA[currentStep]);
     }, 4500);
 
     try {
@@ -143,8 +155,47 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     } finally {
       clearInterval(progressInterval);
       clearInterval(messageInterval);
-      setIsAutoSelecting(false);
+      setIsProcessing(false);
       setProgress(0);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    setProcessType('MSG');
+    setIsProcessing(true);
+    setProgress(5);
+    setLoadingMessage(loadingStepsMSG[0]);
+    
+    let currentStep = 0;
+    const progressInterval = setInterval(() => {
+      setProgress(prev => (prev < 90 ? prev + 1 : prev));
+    }, 150);
+
+    const messageInterval = setInterval(() => {
+      currentStep = (currentStep + 1) % (loadingStepsMSG.length);
+      setLoadingMessage(loadingStepsMSG[currentStep]);
+    }, 3000);
+
+    try {
+      const response = await fetch('https://n8n.datastack.viagroup.com.br/webhook/envio', {
+        method: 'POST'
+      });
+
+      if (response.ok || (await response.text()).includes("Unused Respond to Webhook node")) {
+        setProgress(100);
+        notify("Mensagens enviadas com sucesso!", "success");
+      } else {
+        throw new Error("Falha ao disparar mensagens");
+      }
+    } catch (error: any) {
+      notify("Erro no envio: " + error.message, "error");
+    } finally {
+      clearInterval(progressInterval);
+      clearInterval(messageInterval);
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProgress(0);
+      }, 1000);
     }
   };
 
@@ -190,21 +241,10 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         notify("Carga atualizada!", "success");
       } else {
         const payload = { ...formData, MotoristaNome: '', PlacaCavalo: '', PlacaCarreta: '' };
-        
-        // Verificar se é produto Raw
         const isRawProduct = formData.Produto?.includes('Raw');
-        
-        console.log('[CargasScreen] handleSubmit - Produto:', formData.Produto);
-        console.log('[CargasScreen] handleSubmit - É produto Raw?', isRawProduct);
-        
-        // Criar primeira carga
         await SharePointService.createCarga(payload as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
         
-        // Se for Raw, criar segunda carga com rota invertida
         if (isRawProduct) {
-          console.log('[CargasScreen] handleSubmit - Criando rota de retorno para produto Raw');
-          
-          // Calcular horário de retorno (+2 horas)
           const [hours, minutes] = (formData.HorarioAgendamento || "00:00").split(':').map(Number);
           const returnHours = ((hours + 2) % 24).toString().padStart(2, '0');
           const returnTime = `${returnHours}:${(minutes || 0).toString().padStart(2, '0')}`;
@@ -212,15 +252,11 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           const payloadRetorno = {
             ...payload,
             CargaId: generateCargaId() + '-R',
-            Origem: formData.Destino,  // INVERTIDO
-            Destino: formData.Origem,  // INVERTIDO
+            Origem: formData.Destino,
+            Destino: formData.Origem,
             HorarioAgendamento: returnTime
           };
-          
-          console.log('[CargasScreen] handleSubmit - Dados da carga de retorno:', payloadRetorno);
-          
           await SharePointService.createCarga(payloadRetorno as Omit<T2_Carga, 'ID' | 'MotoristaTelefone'>);
-          
           notify('Carga registrada com rota de retorno!', 'success');
         } else {
           notify('Nova carga registrada!', 'success');
@@ -247,19 +283,25 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
 
   return (
     <div className="p-6">
-      {/* MODAL DE CARREGAMENTO IA (DISPARADO APENAS NO CLIQUE DO BOTÃO IA) */}
-      {isAutoSelecting && (
+      {/* MODAL DE PROCESSAMENTO (IA OU MENSAGEM) */}
+      {isProcessing && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-10 shadow-2xl max-w-md w-full flex flex-col items-center text-center gap-6">
             <div className="relative">
               <div className="w-24 h-24 border-4 border-slate-100 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <svg className="w-10 h-10 text-amber-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                {processType === 'IA' ? (
+                  <svg className="w-10 h-10 text-amber-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                ) : (
+                  <svg className="w-10 h-10 text-emerald-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                )}
               </div>
             </div>
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">IA Seletor</h3>
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">
+                {processType === 'IA' ? 'IA Seletor' : 'Manda Mensagem'}
+              </h3>
               <p className="text-slate-500 font-medium h-16 flex items-center justify-center px-4 leading-snug">{loadingMessage}</p>
             </div>
             <div className="w-full space-y-2">
@@ -268,7 +310,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-full transition-all duration-700 shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${progress}%` }}></div>
+                <div className={`${processType === 'IA' ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.5)]' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]'} h-full transition-all duration-700`} style={{ width: `${progress}%` }}></div>
               </div>
             </div>
           </div>
@@ -283,11 +325,19 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         <div className="flex gap-3 flex-wrap">
           <button 
             onClick={handleAutoSelectCavalo}
-            disabled={isAutoSelecting}
+            disabled={isProcessing}
             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             Selecionar Automático (IA)
+          </button>
+          <button 
+            onClick={handleSendMessage}
+            disabled={isProcessing}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            Manda Mensagem
           </button>
           <button 
             onClick={openNewCargaModal}
@@ -317,7 +367,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         </div>
       </div>
 
-      {/* RESTAURAÇÃO DA TABELA PARA O LAYOUT ORIGINAL */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm bg-white">
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-800 text-slate-200 text-[10px] font-bold uppercase tracking-widest">
@@ -434,7 +483,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         <MotoristaModal onClose={() => { setShowMotoristaModal(false); setSelectedCargaForMotorista(null); }} onSelect={async (m) => {
           if (selectedCargaForMotorista?.ID) {
             try {
-              // ATUALIZAÇÃO MANUAL: Não possui qualquer relação com o Webhook da IA
               await SharePointService.updateCargaComMotorista(selectedCargaForMotorista.ID, {
                 motorista: m.MOTORISTA,
                 cavalo: m.CAVALO,
@@ -447,7 +495,6 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
           }
           setShowMotoristaModal(false);
           setSelectedCargaForMotorista(null);
-          // Recarrega apenas a lista local
           fetchData();
         }} />
       )}
