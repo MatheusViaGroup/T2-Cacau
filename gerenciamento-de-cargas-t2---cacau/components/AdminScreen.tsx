@@ -29,7 +29,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
         SharePointService.getTelefones()
       ]);
       setOrigens(o); setDestinos(d); setTelefones(t);
-    } catch (err) { notify("Erro dados", "error"); }
+    } catch (err) { notify("Erro ao carregar dados", "error"); }
   }, [notify]);
 
   useEffect(() => { fetchAdminData(); }, [fetchAdminData]);
@@ -44,61 +44,58 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
 
   const handleAddOrigem = async () => {
     if (!newOrigem) return; setIsActionLoading('origem');
-    try { await SharePointService.saveOrigem(newOrigem); setNewOrigem(''); await fetchAdminData(); notify("Origem salva!", "success");
-    } catch (err) { notify("Erro", "error"); } finally { setIsActionLoading(null); }
+    try { await SharePointService.saveOrigem(newOrigem); setNewOrigem(''); await fetchAdminData(); notify("Origem adicionada", "success");
+    } catch (err) { notify("Erro ao salvar", "error"); } finally { setIsActionLoading(null); }
   };
 
   const handleAddDestino = async () => {
     if (!newDestino) return; setIsActionLoading('destino');
-    try { await SharePointService.saveDestino(newDestino); setNewDestino(''); await fetchAdminData(); notify("Destino salvo!", "success");
-    } catch (err) { notify("Erro", "error"); } finally { setIsActionLoading(null); }
+    try { await SharePointService.saveDestino(newDestino); setNewDestino(''); await fetchAdminData(); notify("Destino adicionado", "success");
+    } catch (err) { notify("Erro ao salvar", "error"); } finally { setIsActionLoading(null); }
   };
 
   const handleSavePhone = async () => {
     if (!phoneMotorista || !phoneWhatsapp) return; setIsActionLoading('phone');
-    try { await SharePointService.saveOrUpdateTelefone({ NomeMotorista: phoneMotorista, TelefoneWhatsapp: phoneWhatsapp }); setPhoneMotorista(''); setPhoneWhatsapp(''); await fetchAdminData(); notify("Contato atualizado!", "success");
-    } catch (err) { notify("Erro", "error"); } finally { setIsActionLoading(null); }
+    try { await SharePointService.saveOrUpdateTelefone({ NomeMotorista: phoneMotorista, TelefoneWhatsapp: phoneWhatsapp }); setPhoneMotorista(''); setPhoneWhatsapp(''); await fetchAdminData(); notify("Contato salvo", "success");
+    } catch (err) { notify("Erro ao salvar", "error"); } finally { setIsActionLoading(null); }
   };
 
   return (
-    <div className="space-y-16 pb-20">
-      <div className="flex items-center gap-6">
-        <div className="p-5 bg-blue-50 rounded-[2rem] text-[#004a99] shadow-xl shadow-blue-200/50">
-          <BookOpen size={36} />
-        </div>
-        <div>
-          <h2 className="text-4xl font-black text-slate-800 tracking-tighter uppercase italic leading-none">Configurações Gerais</h2>
-          <p className="text-slate-500 font-bold uppercase tracking-[0.4em] text-[10px] mt-2 italic">Gerenciamento de Domínios e Frota</p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-800">Administração</h2>
+        <p className="text-sm text-slate-500">Configurações de domínio e agenda corporativa</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Contatos Column */}
-        <div className="space-y-8 flex flex-col h-full">
-          <div className="glass p-10 rounded-[3.5rem] shadow-xl border border-white/50 space-y-8 flex-1">
-            <h3 className="text-lg font-black text-slate-800 uppercase italic flex items-center gap-3">
-              <Phone size={20} className="text-[#004a99]" /> Agenda Frota
+        <div className="flex flex-col gap-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <Phone size={14} className="text-[#004a99]" /> Agenda Frota
             </h3>
-            <div className="space-y-5">
-              <select value={phoneMotorista} onChange={(e) => setPhoneMotorista(e.target.value)} className="w-full border-2 border-slate-100 rounded-3xl px-6 py-4 text-xs font-bold focus:border-[#004a99] outline-none transition-all shadow-sm">
+            <div className="space-y-4">
+              <select value={phoneMotorista} onChange={(e) => setPhoneMotorista(e.target.value)} className="w-full border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold focus:border-[#004a99] outline-none transition-all">
                 <option value="">Motorista...</option>
                 {motoristasDisponiveis.map((m, idx) => <option key={idx} value={m.MOTORISTA}>{m.MOTORISTA}</option>)}
               </select>
-              <input type="text" placeholder="WhatsApp (55...)" value={phoneWhatsapp} onChange={e => setPhoneWhatsapp(e.target.value)} className="w-full border-2 border-slate-100 rounded-3xl px-6 py-4 text-xs font-bold focus:border-[#004a99] outline-none shadow-sm" />
-              <button onClick={handleSavePhone} disabled={isActionLoading === 'phone'} className="w-full bg-[#004a99] text-white font-black py-5 rounded-[2rem] shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all text-[10px] uppercase tracking-widest disabled:opacity-50">Vincular Contato</button>
+              <input type="text" placeholder="WhatsApp (Ex: 55119...)" value={phoneWhatsapp} onChange={e => setPhoneWhatsapp(e.target.value)} className="w-full border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold focus:border-[#004a99] outline-none" />
+              <button onClick={handleSavePhone} disabled={isActionLoading === 'phone'} className="w-full bg-[#004a99] text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-widest hover:bg-[#003d7a] transition-all disabled:opacity-50">Vincular</button>
             </div>
             
-            <div className="bg-slate-50/50 rounded-[2.5rem] overflow-hidden border border-slate-100 shadow-inner flex-1 min-h-[300px] flex flex-col">
-               <div className="px-6 py-4 bg-white/50 border-b border-slate-100 flex justify-between items-center">
-                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Base de Dados</span>
-                 <span className="text-[10px] font-black text-[#004a99]">{telefones.length} Itens</span>
+            <div className="bg-slate-50 rounded-lg overflow-hidden border border-slate-100 min-h-[300px] flex flex-col mt-4">
+               <div className="px-4 py-2 bg-slate-100/50 border-b border-slate-100 flex justify-between items-center">
+                 <span className="text-[10px] font-bold text-slate-400 uppercase">Contatos Salvos</span>
+                 <span className="text-[10px] font-bold text-[#004a99]">{telefones.length}</span>
                </div>
-               <div className="flex-1 overflow-y-auto max-h-[400px] scrollbar-hide">
-                 {telefones.map(t => (
-                   <div key={t.ID} className="px-6 py-4 flex justify-between items-center hover:bg-white transition-all border-b border-slate-50">
-                     <span className="text-[11px] font-black text-slate-700 uppercase">{t.NomeMotorista}</span>
-                     <span className="text-[11px] font-black text-[#004a99] font-mono tracking-tighter">{t.TelefoneWhatsapp}</span>
+               <div className="flex-1 overflow-y-auto max-h-[300px]">
+                 {telefones.length === 0 ? (
+                    <p className="p-10 text-center text-[10px] text-slate-300 italic">Nenhum contato</p>
+                 ) : telefones.map(t => (
+                   <div key={t.ID} className="px-4 py-3 flex justify-between items-center border-b border-slate-100/50 last:border-0 hover:bg-white transition-colors">
+                     <span className="text-[11px] font-semibold text-slate-600 uppercase truncate pr-4">{t.NomeMotorista}</span>
+                     <span className="text-[11px] font-bold text-[#004a99] font-mono">{t.TelefoneWhatsapp}</span>
                    </div>
                  ))}
                </div>
@@ -107,38 +104,38 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
         </div>
 
         {/* Origens Column */}
-        <div className="glass p-10 rounded-[4rem] shadow-xl border border-white/50 flex flex-col h-full">
-          <h3 className="text-lg font-black text-slate-800 uppercase italic mb-8 flex items-center gap-3">
-            <MapPin size={20} className="text-[#00adef]" /> Origens
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col h-fit">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+            <MapPin size={14} className="text-[#00adef]" /> Origens
           </h3>
-          <div className="flex gap-3 mb-8">
-            <input type="text" placeholder="Local..." value={newOrigem} onChange={e => setNewOrigem(e.target.value)} className="flex-1 border-2 border-slate-100 rounded-2xl px-5 py-4 text-xs font-bold focus:border-[#00adef] outline-none shadow-sm" />
-            <button onClick={handleAddOrigem} disabled={isActionLoading === 'origem'} className="bg-[#00adef] text-white px-6 rounded-2xl shadow-lg shadow-cyan-500/20 hover:scale-110 active:scale-90 transition-all disabled:opacity-50"><Plus size={20} /></button>
+          <div className="flex gap-2 mb-6">
+            <input type="text" placeholder="Novo local..." value={newOrigem} onChange={e => setNewOrigem(e.target.value)} className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold focus:border-[#00adef] outline-none" />
+            <button onClick={handleAddOrigem} disabled={isActionLoading === 'origem'} className="bg-[#00adef] text-white px-3 rounded-lg hover:bg-[#0086b3] transition-colors disabled:opacity-50"><Plus size={16} /></button>
           </div>
-          <div className="space-y-3 flex-1 overflow-y-auto scrollbar-hide max-h-[600px]">
+          <div className="space-y-2 overflow-y-auto max-h-[500px] pr-1">
             {origens.map(o => (
-              <div key={o.ID} className="flex justify-between items-center p-5 bg-white/50 rounded-[1.5rem] border border-slate-100 group hover:shadow-lg transition-all">
-                <span className="text-xs font-black text-slate-700 uppercase italic">{o.NomeLocal}</span>
-                <button onClick={() => o.ID && SharePointService.deleteOrigem(o.ID).then(() => fetchAdminData())} className="text-rose-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-2 bg-white rounded-xl shadow-sm"><Trash2 size={16} /></button>
+              <div key={o.ID} className="flex justify-between items-center px-4 py-2.5 bg-slate-50 rounded-lg border border-slate-100 group">
+                <span className="text-xs font-semibold text-slate-700 uppercase">{o.NomeLocal}</span>
+                <button onClick={() => o.ID && SharePointService.deleteOrigem(o.ID).then(() => fetchAdminData())} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14} /></button>
               </div>
             ))}
           </div>
         </div>
 
         {/* Destinos Column */}
-        <div className="glass p-10 rounded-[4rem] shadow-xl border border-white/50 flex flex-col h-full">
-          <h3 className="text-lg font-black text-slate-800 uppercase italic mb-8 flex items-center gap-3">
-            <Navigation size={20} className="text-[#004a99]" /> Destinos
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col h-fit">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+            <Navigation size={14} className="text-[#004a99]" /> Destinos
           </h3>
-          <div className="flex gap-3 mb-8">
-            <input type="text" placeholder="Local..." value={newDestino} onChange={e => setNewDestino(e.target.value)} className="flex-1 border-2 border-slate-100 rounded-2xl px-5 py-4 text-xs font-bold focus:border-[#004a99] outline-none shadow-sm" />
-            <button onClick={handleAddDestino} disabled={isActionLoading === 'destino'} className="bg-[#004a99] text-white px-6 rounded-2xl shadow-lg shadow-blue-500/20 hover:scale-110 active:scale-90 transition-all disabled:opacity-50"><Plus size={20} /></button>
+          <div className="flex gap-2 mb-6">
+            <input type="text" placeholder="Novo local..." value={newDestino} onChange={e => setNewDestino(e.target.value)} className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold focus:border-[#004a99] outline-none" />
+            <button onClick={handleAddDestino} disabled={isActionLoading === 'destino'} className="bg-[#004a99] text-white px-3 rounded-lg hover:bg-[#003d7a] transition-colors disabled:opacity-50"><Plus size={16} /></button>
           </div>
-          <div className="space-y-3 flex-1 overflow-y-auto scrollbar-hide max-h-[600px]">
+          <div className="space-y-2 overflow-y-auto max-h-[500px] pr-1">
             {destinos.map(d => (
-              <div key={d.ID} className="flex justify-between items-center p-5 bg-white/50 rounded-[1.5rem] border border-slate-100 group hover:shadow-lg transition-all">
-                <span className="text-xs font-black text-slate-700 uppercase italic">{d.NomeLocal}</span>
-                <button onClick={() => d.ID && SharePointService.deleteDestino(d.ID).then(() => fetchAdminData())} className="text-rose-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-2 bg-white rounded-xl shadow-sm"><Trash2 size={16} /></button>
+              <div key={d.ID} className="flex justify-between items-center px-4 py-2.5 bg-slate-50 rounded-lg border border-slate-100 group">
+                <span className="text-xs font-semibold text-slate-700 uppercase">{d.NomeLocal}</span>
+                <button onClick={() => d.ID && SharePointService.deleteDestino(d.ID).then(() => fetchAdminData())} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14} /></button>
               </div>
             ))}
           </div>
