@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { T2_Origem, T2_Destino, T2_Telefone, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
 import { n8nService, FrotaMotorista } from '../services/n8nService';
-import { Phone, MapPin, Navigation, Plus, Trash2, User, BookOpen } from 'lucide-react';
+import { Phone, MapPin, Navigation, Plus, Trash2, User, BookOpen, FileUp, Loader2 } from 'lucide-react';
 
 interface AdminProps {
   notify: (msg: string, type: ToastType) => void;
@@ -15,6 +15,7 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
   const [telefones, setTelefones] = useState<T2_Telefone[]>([]);
   const [motoristasDisponiveis, setMotoristasDisponiveis] = useState<FrotaMotorista[]>([]);
   const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [newOrigem, setNewOrigem] = useState('');
   const [newDestino, setNewDestino] = useState('');
@@ -60,6 +61,52 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
     } catch (err) { notify("Erro ao salvar", "error"); } finally { setIsActionLoading(null); }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      setIsActionLoading('import');
+      try {
+        // Divide por linhas e remove vazios
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+        
+        // Ignora cabeçalho se existir (MOTORISTA, NUMERO)
+        const startIdx = lines[0].toLowerCase().includes('motorista') ? 1 : 0;
+        let count = 0;
+
+        for (let i = startIdx; i < lines.length; i++) {
+          // Tenta detectar vírgula ou ponto-e-vírgula
+          const separator = lines[i].includes(';') ? ';' : ',';
+          const [motorista, numero] = lines[i].split(separator).map(s => s.trim());
+
+          if (motorista && numero) {
+            // Limpa o número (remove espaços, traços, etc)
+            const cleanedNumero = numero.replace(/\D/g, '');
+            await SharePointService.saveOrUpdateTelefone({ 
+              NomeMotorista: motorista.toUpperCase(), 
+              TelefoneWhatsapp: cleanedNumero 
+            });
+            count++;
+          }
+        }
+        
+        notify(`${count} contatos importados com sucesso`, "success");
+        await fetchAdminData();
+      } catch (err) {
+        notify("Erro ao processar arquivo CSV", "error");
+      } finally {
+        setIsActionLoading(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -72,9 +119,29 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
         {/* Contatos Column */}
         <div className="flex flex-col gap-6">
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Phone size={14} className="text-[#004a99]" /> Agenda Frota
-            </h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Phone size={14} className="text-[#004a99]" /> Agenda Frota
+              </h3>
+              
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isActionLoading === 'import'}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-[#004a99] hover:text-[#003d7a] transition-colors uppercase border border-slate-100 px-2 py-1 rounded bg-slate-50"
+              >
+                {isActionLoading === 'import' ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+                {isActionLoading === 'import' ? 'Importando...' : 'Importar Planilha'}
+              </button>
+              
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".csv" 
+                onChange={handleFileUpload} 
+              />
+            </div>
+
             <div className="space-y-4">
               <select value={phoneMotorista} onChange={(e) => setPhoneMotorista(e.target.value)} className="w-full border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold focus:border-[#004a99] outline-none transition-all">
                 <option value="">Motorista...</option>
