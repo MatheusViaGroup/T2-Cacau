@@ -3,9 +3,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { T2_Origem, T2_Destino, T2_Telefone, ToastType } from '../types';
 import { SharePointService } from '../services/sharepointService';
 import { n8nService, FrotaMotorista } from '../services/n8nService';
-// Added SHAREPOINT_CONFIG to imports to fix "Cannot find name 'SHAREPOINT_CONFIG'" error
 import { SHAREPOINT_CONFIG } from '../constants';
 import { Phone, MapPin, Navigation, Plus, Trash2, User, BookOpen, FileUp, Loader2, AlertCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface AdminProps {
   notify: (msg: string, type: ToastType) => void;
@@ -63,86 +63,86 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
     } catch (err) { notify("Erro ao salvar", "error"); } finally { setIsActionLoading(null); }
   };
 
-  const cleanCsvField = (field: string) => {
-    if (!field) return "";
-    // Remove aspas que o Excel coloca em volta de campos com espaço
-    // e limpa espaços em branco nas pontas
-    return field.replace(/^["']|["']$/g, '').trim();
+  const cleanString = (val: any) => {
+    if (val === undefined || val === null) return "";
+    return String(val).replace(/^["']|["']$/g, '').trim();
+  };
+
+  const processRows = async (rows: any[][]) => {
+    if (rows.length === 0) return 0;
+    
+    // Detectar cabeçalho
+    const firstRowStr = JSON.stringify(rows[0]).toLowerCase();
+    const startIdx = (firstRowStr.includes('motorista') || firstRowStr.includes('numero')) ? 1 : 0;
+    
+    let count = 0;
+    for (let i = startIdx; i < rows.length; i++) {
+      const row = rows[i];
+      const rawMotorista = row[0];
+      const rawNumero = row[1];
+
+      if (rawMotorista && rawNumero) {
+        const motorista = cleanString(rawMotorista).toUpperCase();
+        const numero = String(rawNumero).replace(/\D/g, '');
+
+        if (motorista && numero) {
+          await SharePointService.saveOrUpdateTelefone({ 
+            NomeMotorista: motorista, 
+            TelefoneWhatsapp: numero 
+          });
+          count++;
+        }
+      }
+    }
+    return count;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Se começar com .xlsx vai dar erro, avisamos o usuário
-    if (file.name.endsWith('.xlsx')) {
-      notify("Por favor, salve a planilha como .CSV antes de importar", "error");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-
+    setIsActionLoading('import');
     const reader = new FileReader();
+
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
     reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
-
-      // Se o arquivo começar com "PK", ele é um ZIP/XLSX e não um CSV
-      if (text.startsWith('PK')) {
-        notify("Arquivo inválido. Use o formato CSV (separado por vírgulas)", "error");
-        setIsActionLoading(null);
-        return;
-      }
-
-      setIsActionLoading('import');
       try {
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
-        
-        // Detectar se a primeira linha é cabeçalho e pular se for
-        const firstLine = lines[0].toLowerCase();
-        const startIdx = (firstLine.includes('motorista') || firstLine.includes('numero')) ? 1 : 0;
-        
         let count = 0;
-
-        // Processar em chunks ou sequencial para o SharePoint não bloquear
-        for (let i = startIdx; i < lines.length; i++) {
-          const currentLine = lines[i];
-          
-          // Detectar separador (vírgula ou ponto-e-vírgula)
-          const separator = currentLine.includes(';') ? ';' : ',';
-          const parts = currentLine.split(separator);
-          
-          // Coluna A (0) = Motorista, Coluna B (1) = Numero
-          const rawMotorista = parts[0];
-          const rawNumero = parts[1];
-
-          if (rawMotorista && rawNumero) {
-            const motorista = cleanCsvField(rawMotorista).toUpperCase();
-            const numero = rawNumero.replace(/\D/g, ''); // Mantém só números
-
-            if (motorista && numero) {
-              await SharePointService.saveOrUpdateTelefone({ 
-                NomeMotorista: motorista, 
-                TelefoneWhatsapp: numero 
-              });
-              count++;
-            }
-          }
+        if (isExcel) {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          count = await processRows(rows);
+        } else {
+          // Processamento CSV
+          const text = event.target?.result as string;
+          const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+          const rows = lines.map(line => {
+            const separator = line.includes(';') ? ';' : ',';
+            return line.split(separator);
+          });
+          count = await processRows(rows);
         }
-        
+
         notify(`${count} contatos sincronizados`, "success");
         await fetchAdminData();
       } catch (err) {
         console.error("Erro importação:", err);
-        notify("Falha ao processar CSV. Verifique o formato.", "error");
+        notify("Falha ao processar arquivo. Verifique se é Excel ou CSV.", "error");
       } finally {
         setIsActionLoading(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
 
-    // Usamos 'ISO-8859-1' como fallback comum para Excel brasileiro se UTF-8 falhar
-    // mas readAsText padrão costuma lidar bem com a maioria
-    reader.readAsText(file);
+    if (isExcel) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
   };
 
   return (
@@ -168,14 +168,14 @@ const AdminScreen: React.FC<AdminProps> = ({ notify }) => {
                 className="flex items-center gap-1.5 text-[10px] font-bold text-[#004a99] hover:text-[#003d7a] transition-colors uppercase border border-slate-100 px-2 py-1.5 rounded-lg bg-slate-50 shadow-sm"
               >
                 {isActionLoading === 'import' ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
-                {isActionLoading === 'import' ? 'Processando...' : 'Importar CSV'}
+                {isActionLoading === 'import' ? 'Processando...' : 'Importar Planilha'}
               </button>
               
               <input 
                 type="file" 
                 ref={fileInputRef} 
                 className="hidden" 
-                accept=".csv" 
+                accept=".csv,.xlsx,.xls" 
                 onChange={handleFileUpload} 
               />
             </div>
