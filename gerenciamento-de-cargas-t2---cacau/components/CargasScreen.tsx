@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { T2_Carga, T2_Origem, T2_Destino, ProdutoType, ToastType } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { T2_Carga, T2_Origem, T2_Destino, ProdutoType, ToastType, T2_Telefone } from '../types';
 import { SharePointService } from '../services/sharepointService';
-import { PRODUTOS } from '../constants';
+import { SHAREPOINT_CONFIG, PRODUTOS } from '../constants';
 import MotoristaModal from './MotoristaModal';
-import { Zap, MessageSquare, Plus, Filter, Search, Calendar, Package, ArrowRight, Edit3, Trash2, Truck } from 'lucide-react';
+import { Zap, MessageSquare, Plus, Filter, Search, Calendar, Package, ArrowRight, Edit3, Trash2, Truck, RefreshCw, Smartphone } from 'lucide-react';
 
 interface CargasProps {
   notify: (msg: string, type: ToastType) => void;
@@ -14,6 +14,7 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
   const [cargas, setCargas] = useState<T2_Carga[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [processType, setProcessType] = useState<'IA' | 'MSG'>('IA');
   const [loadingMessage, setLoadingMessage] = useState('Iniciando...');
   const [progress, setProgress] = useState(0);
@@ -48,7 +49,53 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
     }
   }, [filterMotorista, filterProduto, filterData, notify]);
 
+  // Background Sync: Tenta buscar telefones faltantes a cada 60 segundos
+  const syncMissingPhones = useCallback(async () => {
+    // Pegar apenas as cargas que tem nome de motorista mas NÃO tem telefone
+    const missing = cargas.filter(c => c.MotoristaNome && (!c.MotoristaTelefone || c.MotoristaTelefone.trim() === ''));
+    
+    if (missing.length === 0) return;
+
+    setIsSyncing(true);
+    console.log(`[Sync] Tentando recuperar ${missing.length} telefones faltantes...`);
+    
+    try {
+      const agenda = await SharePointService.getTelefones();
+      let updatedCount = 0;
+
+      for (const carga of missing) {
+        const contato = agenda.find(t => t.NomeMotorista?.toLowerCase() === carga.MotoristaNome?.toLowerCase());
+        
+        if (contato && contato.TelefoneWhatsapp && carga.ID) {
+          // Atualiza no SharePoint
+          await SharePointService.updateItem(SHAREPOINT_CONFIG.LISTS.CARGAS.id, carga.ID, {
+            MotoristaTelefone: contato.TelefoneWhatsapp
+          });
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount > 0) {
+        console.log(`[Sync] ${updatedCount} telefones sincronizados com sucesso.`);
+        await fetchData(true); // Atualiza a lista silenciosamente
+      }
+    } catch (err) {
+      console.error("[Sync] Erro na sincronização automática:", err);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 2000);
+    }
+  }, [cargas, fetchData]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Efeito do Intervalo de 1 minuto
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      syncMissingPhones();
+    }, 60000); // 60 segundos
+
+    return () => clearInterval(intervalId);
+  }, [syncMissingPhones]);
 
   useEffect(() => {
     const loadReferences = async () => {
@@ -75,6 +122,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
         setProgress(100);
         notify("Cargas atribuídas", "success");
         await fetchData();
+        // Dispara sync de telefone imediatamente após a IA rodar
+        setTimeout(syncMissingPhones, 2000);
       } else { throw new Error(); }
     } catch (error) { notify("Erro na operação", "error");
     } finally { clearInterval(interval); setTimeout(() => { setIsProcessing(false); setProgress(0); }, 800); }
@@ -137,7 +186,15 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
       {/* Minimalism Header Section */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Operações</h2>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-2xl font-bold text-slate-800">Operações</h2>
+            {isSyncing && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-[#004a99] rounded-full animate-pulse border border-blue-100">
+                <RefreshCw size={10} className="animate-spin" />
+                <span className="text-[9px] font-bold uppercase tracking-wider">Sincronizando contatos</span>
+              </div>
+            )}
+          </div>
           <p className="text-sm text-slate-500">Fluxo diário de movimentação de cargas</p>
         </div>
         <div className="flex gap-2">
@@ -180,6 +237,8 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr><td colSpan={5} className="py-20 text-center"><div className="w-8 h-8 border-2 border-[#004a99] border-t-transparent rounded-full animate-spin mx-auto"></div></td></tr>
+                ) : cargas.length === 0 ? (
+                  <tr><td colSpan={5} className="py-20 text-center text-slate-400 text-xs italic font-medium">Nenhum registro encontrado</td></tr>
                 ) : cargas.map(item => (
                   <tr key={item.ID} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
@@ -189,7 +248,16 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                       {item.MotoristaNome ? (
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold text-slate-700">{item.MotoristaNome}</span>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">{item.PlacaCavalo}</span>
+                          <div className="flex items-center gap-2">
+                             <span className="text-[10px] text-slate-400 font-bold uppercase">{item.PlacaCavalo}</span>
+                             {item.MotoristaTelefone ? (
+                               <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1 rounded flex items-center gap-0.5">
+                                 <Smartphone size={8} /> OK
+                               </span>
+                             ) : (
+                               <span className="text-[9px] text-rose-400 italic">sem contato...</span>
+                             )}
+                          </div>
                         </div>
                       ) : (
                         <span className="text-slate-300 text-[11px] italic">Não atribuído</span>
@@ -212,9 +280,9 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => { setSelectedCargaForMotorista(item); setShowMotoristaModal(true); }} className="p-2 text-slate-400 hover:text-[#004a99] transition-colors"><Truck size={16} /></button>
-                        <button onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }} className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Edit3 size={16} /></button>
-                        <button onClick={() => item.ID && handleDelete(item.ID)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={() => { setSelectedCargaForMotorista(item); setShowMotoristaModal(true); }} title="Vincular Motorista" className="p-2 text-slate-400 hover:text-[#004a99] transition-colors"><Truck size={16} /></button>
+                        <button onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }} title="Editar" className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Edit3 size={16} /></button>
+                        <button onClick={() => item.ID && handleDelete(item.ID)} title="Excluir" className="p-2 text-slate-400 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
@@ -243,9 +311,12 @@ const CargasScreen: React.FC<CargasProps> = ({ notify }) => {
             </div>
           </div>
           
-          <div className="bg-[#004a99] text-white rounded-xl p-6 shadow-md">
-            <h3 className="text-sm font-bold mb-2">Resumo Operacional</h3>
-            <p className="text-blue-100 text-xs leading-relaxed">Gerencie frotas e ordens com segurança e agilidade integrando com n8n e SharePoint.</p>
+          <div className="bg-[#004a99] text-white rounded-xl p-6 shadow-md relative overflow-hidden group">
+            <div className="relative z-10">
+              <h3 className="text-sm font-bold mb-2">Resumo Operacional</h3>
+              <p className="text-blue-100 text-xs leading-relaxed">Gerencie frotas e ordens com segurança. O sistema sincroniza contatos automaticamente a cada minuto.</p>
+            </div>
+            <RefreshCw className={`absolute -right-4 -bottom-4 text-white/10 ${isSyncing ? 'animate-spin' : ''}`} size={80} />
           </div>
         </div>
       </div>
